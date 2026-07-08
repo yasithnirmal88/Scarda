@@ -1,9 +1,19 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, users, sections, inverters, strings, alerts, weather, string_readings
+from app.api.router import api_router
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.database.init_db import init_database
+from app.middleware.auth import AuthMiddleware
+from app.middleware.error_handler import ErrorHandlerMiddleware
+from app.middleware.request_logger import RequestLoggerMiddleware
 
-app = FastAPI(title="Solar AIM", version="0.1.0")
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title=settings.APP_NAME, version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,17 +22,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthMiddleware)
+app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(RequestLoggerMiddleware)
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(users.router, prefix="/api/users", tags=["Users"])
-app.include_router(sections.router, prefix="/api/sections", tags=["Sections"])
-app.include_router(inverters.router, prefix="/api/inverters", tags=["Inverters"])
-app.include_router(strings.router, prefix="/api/strings", tags=["Strings"])
-app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
-app.include_router(weather.router, prefix="/api/weather", tags=["Weather"])
-app.include_router(string_readings.router, prefix="/api/string-readings", tags=["String Readings"])
+app.include_router(api_router, prefix="/api")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    setup_logging()
+    logger.info("Starting %s", settings.APP_NAME)
+    init_database()
 
 
 @app.get("/")
-def root():
-    return {"message": "Solar AIM API"}
+async def root():
+    return {"app": settings.APP_NAME, "version": "0.1.0", "status": "running"}

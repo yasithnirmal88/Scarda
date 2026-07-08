@@ -1,20 +1,25 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database.base import Base
+from app.utils.enums import InverterStatus
 
 
 class Inverter(Base):
     __tablename__ = "inverters"
 
-    id = Column(Integer, primary_key=True, index=True)
-    section_id = Column(Integer, ForeignKey("sections.id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    model_number = Column(String(100), nullable=True)
-    status = Column(String(20), default="offline")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    section_id: Mapped[int] = mapped_column(Integer, ForeignKey("sections.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[InverterStatus] = mapped_column(
+        Enum(InverterStatus), nullable=False, default=InverterStatus.OFFLINE
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     section = relationship("Section", back_populates="inverters")
-    strings = relationship("String", back_populates="inverter")
+    strings = relationship("String", back_populates="inverter", cascade="all, delete-orphan")

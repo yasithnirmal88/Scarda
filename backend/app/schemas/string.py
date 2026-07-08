@@ -3,15 +3,11 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class StringBase(BaseModel):
+class StringCreate(BaseModel):
     inverter_id: int
     name: str
     panel_count: int = 0
     status: str = "active"
-
-
-class StringCreate(StringBase):
-    pass
 
 
 class StringUpdate(BaseModel):
@@ -20,8 +16,12 @@ class StringUpdate(BaseModel):
     status: str | None = None
 
 
-class StringResponse(StringBase):
+class StringResponse(BaseModel):
     id: int
+    inverter_id: int
+    name: str
+    panel_count: int
+    status: str
     created_at: datetime
     updated_at: datetime | None = None
 

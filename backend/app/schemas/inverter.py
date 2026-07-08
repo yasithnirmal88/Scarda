@@ -3,15 +3,11 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class InverterBase(BaseModel):
+class InverterCreate(BaseModel):
     section_id: int
     name: str
     model_number: str | None = None
     status: str = "offline"
-
-
-class InverterCreate(InverterBase):
-    pass
 
 
 class InverterUpdate(BaseModel):
@@ -20,8 +16,12 @@ class InverterUpdate(BaseModel):
     status: str | None = None
 
 
-class InverterResponse(InverterBase):
+class InverterResponse(BaseModel):
     id: int
+    section_id: int
+    name: str
+    model_number: str | None
+    status: str
     created_at: datetime
     updated_at: datetime | None = None
 

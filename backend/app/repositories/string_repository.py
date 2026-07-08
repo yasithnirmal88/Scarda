@@ -1,18 +1,34 @@
+from collections.abc import Sequence
+
 from sqlalchemy.orm import Session
 
 from app.models.string import String
-from app.repositories.base import BaseRepository
 
 
-class StringRepository(BaseRepository):
-    def __init__(self, db: Session):
-        super().__init__(db)
+class StringRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
 
-    def get_all(self) -> list[String]:
-        return self.db.query(String).all()
+    def create(self, string: String) -> String:
+        self.db.add(string)
+        self.db.commit()
+        self.db.refresh(string)
+        return string
 
-    def get_by_id(self, string_id: int) -> String | None:
+    def update(self, string: String) -> String:
+        self.db.commit()
+        self.db.refresh(string)
+        return string
+
+    def delete(self, string: String) -> None:
+        self.db.delete(string)
+        self.db.commit()
+
+    def find_by_id(self, string_id: int) -> String | None:
         return self.db.query(String).filter(String.id == string_id).first()
 
-    def get_by_inverter(self, inverter_id: int) -> list[String]:
+    def find_all(self) -> Sequence[String]:
+        return self.db.query(String).all()
+
+    def find_by_inverter(self, inverter_id: int) -> Sequence[String]:
         return self.db.query(String).filter(String.inverter_id == inverter_id).all()

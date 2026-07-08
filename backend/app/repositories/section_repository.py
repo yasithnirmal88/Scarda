@@ -1,15 +1,31 @@
+from collections.abc import Sequence
+
 from sqlalchemy.orm import Session
 
 from app.models.section import Section
-from app.repositories.base import BaseRepository
 
 
-class SectionRepository(BaseRepository):
-    def __init__(self, db: Session):
-        super().__init__(db)
+class SectionRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
 
-    def get_all(self) -> list[Section]:
-        return self.db.query(Section).all()
+    def create(self, section: Section) -> Section:
+        self.db.add(section)
+        self.db.commit()
+        self.db.refresh(section)
+        return section
 
-    def get_by_id(self, section_id: int) -> Section | None:
+    def update(self, section: Section) -> Section:
+        self.db.commit()
+        self.db.refresh(section)
+        return section
+
+    def delete(self, section: Section) -> None:
+        self.db.delete(section)
+        self.db.commit()
+
+    def find_by_id(self, section_id: int) -> Section | None:
         return self.db.query(Section).filter(Section.id == section_id).first()
+
+    def find_all(self) -> Sequence[Section]:
+        return self.db.query(Section).all()

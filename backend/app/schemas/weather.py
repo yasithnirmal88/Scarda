@@ -12,8 +12,14 @@ class WeatherCreate(BaseModel):
     precipitation: float | None = None
 
 
-class WeatherResponse(WeatherCreate):
+class WeatherResponse(BaseModel):
     id: int
     recorded_at: datetime
+    temperature: float | None
+    humidity: float | None
+    irradiance: float | None
+    wind_speed: float | None
+    wind_direction: str | None
+    precipitation: float | None
 
     model_config = {"from_attributes": True}

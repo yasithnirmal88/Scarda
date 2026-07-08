@@ -1,27 +1,27 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
-class UserBase(BaseModel):
+class UserCreate(BaseModel):
     username: str
-    email: str
-    role: str = "engineer"
-
-
-class UserCreate(UserBase):
+    email: EmailStr
     password: str
+    role: str = "engineer"
 
 
 class UserUpdate(BaseModel):
     username: str | None = None
-    email: str | None = None
+    email: EmailStr | None = None
     role: str | None = None
     is_active: bool | None = None
 
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     id: int
+    username: str
+    email: str
+    role: str
     is_active: bool
     created_at: datetime
     updated_at: datetime | None = None
