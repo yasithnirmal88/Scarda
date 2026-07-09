@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from app.simulator.models import StringReading
+from simulator.models import StringReading
 
 
 def export_json(readings: list[StringReading], filepath: str) -> None:

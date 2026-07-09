@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from app.simulator.models import SimulatorConfig
-from app.simulator.simulation_controller import SimulationController
+from simulator.models import SimulatorConfig
+from simulator.simulation_controller import SimulationController
 
 
 def _print_sep(char: str = "=", width: int = 68) -> None:

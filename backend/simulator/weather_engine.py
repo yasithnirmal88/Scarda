@@ -4,7 +4,7 @@ import math
 import random
 from datetime import datetime
 
-from app.simulator.models import WeatherState, WeatherType
+from simulator.models import WeatherState, WeatherType
 
 
 class WeatherEngine:

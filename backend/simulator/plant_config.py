@@ -28,33 +28,42 @@ class PlantConfig:
         ]
 
     def all_inverter_ids(self) -> list[str]:
-        result: list[str] = []
+        ids: list[str] = []
         for sec_idx in range(self.num_sections):
-            result.extend(self.inverter_ids(sec_idx))
-        return result
+            ids.extend(self.inverter_ids(sec_idx))
+        return ids
 
     def string_ids(self, section_idx: int, inverter_idx: int) -> list[str]:
-        inv = self.inverter_ids(section_idx)[inverter_idx]
+        sec = f"SEC{str(section_idx + 1).zfill(2)}"
+        inv = f"INV{str(inverter_idx + 1).zfill(2)}"
         return [
-            f"{inv}-STR{str(i + 1).zfill(2)}"
+            f"{sec}-{inv}-STR{str(i + 1).zfill(2)}"
             for i in range(self.strings_per_inverter)
         ]
 
     def all_string_ids(self) -> list[str]:
-        result: list[str] = []
+        ids: list[str] = []
         for sec_idx in range(self.num_sections):
             for inv_idx in range(self.inverters_per_section):
-                result.extend(self.string_ids(sec_idx, inv_idx))
-        return result
+                ids.extend(self.string_ids(sec_idx, inv_idx))
+        return ids
 
     def section_for_string(self, string_id: str) -> str:
-        return string_id[:5]
+        return string_id.split("-")[0]
 
     def inverter_for_string(self, string_id: str) -> str:
-        return string_id.rsplit("-", 1)[0]
+        parts = string_id.split("-")
+        return f"{parts[0]}-{parts[1]}"
 
-    def section_and_inverter_for_string(self, string_id: str) -> tuple[str, str]:
-        return string_id[:5], string_id[:10]
+    def inverter_ids_for_section(self, section_id: str) -> list[str]:
+        sec_idx = int(section_id.replace("SEC", "")) - 1
+        return self.inverter_ids(sec_idx)
+
+    def string_ids_for_inverter(self, inverter_id: str) -> list[str]:
+        parts = inverter_id.split("-")
+        sec_idx = int(parts[0].replace("SEC", "")) - 1
+        inv_idx = int(parts[1].replace("INV", "")) - 1
+        return self.string_ids(sec_idx, inv_idx)
 
 
 PLANT = PlantConfig()

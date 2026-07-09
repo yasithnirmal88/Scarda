@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from app.simulator.models import StringReading, StringStatus
-from app.simulator.plant_config import PLANT, PlantConfig
-from app.simulator.weather_engine import WeatherEngine
+from simulator.models import StringReading, StringStatus
+from simulator.plant_config import PLANT, PlantConfig
+from simulator.weather_engine import WeatherEngine
 
 
 # ---------------------------------------------------------------------------

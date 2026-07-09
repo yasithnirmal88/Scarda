@@ -4,13 +4,13 @@ import random
 from datetime import datetime
 from typing import Any
 
-from app.simulator.exporters import export_csv, export_json
-from app.simulator.fault_engine import FaultEngine
-from app.simulator.models import FaultConfig, SimulatorConfig, SimulatorSummary, StringReading
-from app.simulator.plant_config import PLANT, PlantConfig
-from app.simulator.reading_generator import ReadingGenerator
-from app.simulator.time_engine import TimeEngine
-from app.simulator.weather_engine import WeatherEngine
+from simulator.exporters import export_csv, export_json
+from simulator.fault_engine import FaultEngine
+from simulator.models import FaultConfig, SimulatorConfig, SimulatorSummary, StringReading
+from simulator.plant_config import PLANT, PlantConfig
+from simulator.reading_generator import ReadingGenerator
+from simulator.time_engine import TimeEngine
+from simulator.weather_engine import WeatherEngine
 
 
 class SimulationController:

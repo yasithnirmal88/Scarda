@@ -4,9 +4,9 @@ import random
 from datetime import datetime
 from typing import Any
 
-from app.simulator.models import FaultConfig, StringStatus
-from app.simulator.plant_config import PLANT, PlantConfig
-from app.simulator.reading_generator import ReadingGenerator
+from simulator.models import FaultConfig, StringStatus
+from simulator.plant_config import PLANT, PlantConfig
+from simulator.reading_generator import ReadingGenerator
 
 
 class FaultEngine:

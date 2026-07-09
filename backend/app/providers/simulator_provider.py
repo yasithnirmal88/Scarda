@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Any
 
 from app.providers.base_provider import IDataProvider
-from app.simulator.models import SimulatorConfig
-from app.simulator.simulation_controller import SimulationController
+from simulator.models import SimulatorConfig
+from simulator.simulation_controller import SimulationController
 
 
 class SimulatorDataProvider(IDataProvider):
