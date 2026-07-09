@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import settings
+from app.config import settings
 from app.providers.interfaces import IDataProvider
 
 

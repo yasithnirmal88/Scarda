@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.pool import NullPool, QueuePool
 
-from app.core.config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ def build_engine(
     echo: bool = False,
     use_null_pool: bool = False,
 ) -> Engine:
-    url = database_url or settings.DATABASE_URL
+    url = database_url or settings.database.URL
     poolclass = NullPool if use_null_pool else QueuePool
 
     engine = create_engine(

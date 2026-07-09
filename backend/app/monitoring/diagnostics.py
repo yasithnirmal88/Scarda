@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ async def get_diagnostics(
     app_info = {
         "name": settings.APP_NAME,
         "debug": settings.DEBUG,
-        "scheduler_enabled": settings.SCHEDULER_ENABLED,
-        "database_url": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else settings.DATABASE_URL,
+        "scheduler_enabled": settings.scheduler.ENABLED,
+        "database_url": settings.database.URL.split("@")[-1] if "@" in settings.database.URL else settings.database.URL,
     }
 
     scheduler_info: dict[str, Any] = {"status": "unavailable"}

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.core.config import settings
+from app.config import settings
 from app.core.logging import setup_logging
 from app.database.migrations import init_database
 from app.middleware.auth import AuthMiddleware
@@ -62,12 +62,13 @@ async def on_startup() -> None:
     logger.info("Starting %s", settings.APP_NAME)
     init_database()
 
+    sch = settings.scheduler
     scheduler_config = {
-        "enabled": settings.SCHEDULER_ENABLED,
-        "simulator_interval_minutes": settings.SCHEDULER_SIMULATOR_INTERVAL_MINUTES,
-        "alert_interval_minutes": settings.SCHEDULER_ALERT_INTERVAL_MINUTES,
-        "cleanup_interval_hours": settings.SCHEDULER_CLEANUP_INTERVAL_HOURS,
-        "stats_interval_minutes": settings.SCHEDULER_STATS_INTERVAL_MINUTES,
+        "enabled": sch.ENABLED,
+        "simulator_interval_minutes": sch.SIMULATOR_INTERVAL_MINUTES,
+        "alert_interval_minutes": sch.ALERT_INTERVAL_MINUTES,
+        "cleanup_interval_hours": sch.CLEANUP_INTERVAL_HOURS,
+        "stats_interval_minutes": sch.STATS_INTERVAL_MINUTES,
     }
 
     from app.providers import create_provider

@@ -1,31 +1,40 @@
+"""Alert engine configuration, bridged from app.config thresholds.
+
+Kept as a dataclass for backward compatibility with the existing
+alert engine code.  The ``from_global_settings`` factory populates
+values from the unified settings.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.config import settings
+
 
 @dataclass
 class AlertEngineConfig:
-    current_threshold_pct: float = 30.0
-    voltage_threshold_pct: float = 15.0
-    power_threshold_pct: float = 30.0
+    current_threshold_pct: float = settings.thresholds.CURRENT_THRESHOLD_PCT
+    voltage_threshold_pct: float = settings.thresholds.VOLTAGE_THRESHOLD_PCT
+    power_threshold_pct: float = settings.thresholds.POWER_THRESHOLD_PCT
 
-    confirmation_cycles: int = 2
-    max_confirmation_delay_minutes: int = 20
+    confirmation_cycles: int = settings.thresholds.CONFIRMATION_CYCLES
+    max_confirmation_delay_minutes: int = settings.thresholds.MAX_CONFIRMATION_DELAY_MINUTES
 
-    severity_warning_threshold: float = 25.0
-    severity_critical_threshold: float = 60.0
+    severity_warning_threshold: float = settings.thresholds.SEVERITY_WARNING_THRESHOLD
+    severity_critical_threshold: float = settings.thresholds.SEVERITY_CRITICAL_THRESHOLD
 
-    enable_recommendations: bool = True
+    enable_recommendations: bool = settings.thresholds.ENABLE_RECOMMENDATIONS
 
-    offline_voltage_threshold: float = 10.0
-    offline_current_threshold: float = 0.5
+    offline_voltage_threshold: float = settings.thresholds.OFFLINE_VOLTAGE_THRESHOLD
+    offline_current_threshold: float = settings.thresholds.OFFLINE_CURRENT_THRESHOLD
 
-    communication_failure_window_minutes: int = 30
+    communication_failure_window_minutes: int = settings.thresholds.COMMUNICATION_FAILURE_WINDOW_MINUTES
 
-    baseline_current: float = 10.0
-    baseline_voltage: float = 820.0
-    baseline_power: float = 8200.0
+    baseline_current: float = settings.thresholds.BASELINE_CURRENT
+    baseline_voltage: float = settings.thresholds.BASELINE_VOLTAGE
+    baseline_power: float = settings.thresholds.BASELINE_POWER
 
     def to_dict(self) -> dict[str, Any]:
         return {
