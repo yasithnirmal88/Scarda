@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Any
 
-from app.providers.base_provider import IDataProvider
+from app.providers.interfaces import IDataProvider
 
 
-class FakeDataProvider(IDataProvider):
+class FakeProvider(IDataProvider):
     """Data provider that returns hardcoded placeholder data."""
 
     async def get_current_readings(self) -> dict[str, Any]:

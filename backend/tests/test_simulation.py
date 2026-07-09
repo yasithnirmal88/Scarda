@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.providers.fake_provider import FakeDataProvider
+from app.providers.fake import FakeProvider
 from app.services.alert_engine.alert_engine import AlertEngine
 from app.services.alert_engine.types import AlertState, Reading
 
@@ -23,7 +23,7 @@ def _convert_fake_reading(raw: dict, string_id: str, timestamp: datetime) -> Rea
 
 @pytest.mark.asyncio
 async def test_engine_against_fake_provider() -> None:
-    provider = FakeDataProvider()
+    provider = FakeProvider()
     engine = AlertEngine()
 
     raw_readings = await provider.get_current_readings()

@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Any
 
-from app.providers.base_provider import IDataProvider
+from app.providers.interfaces import IDataProvider
 from simulator.models import SimulatorConfig
 from simulator.simulation_controller import SimulationController
 
 
-class SimulatorDataProvider(IDataProvider):
+class SimulatorProvider(IDataProvider):
     """Wraps SimulationController to conform to IDataProvider.
 
     This provider acts as the live data source until the real Huawei

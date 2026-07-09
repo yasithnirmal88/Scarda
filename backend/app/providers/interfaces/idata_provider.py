@@ -7,6 +7,7 @@ class IDataProvider(ABC):
     """Abstract interface for all data providers.
 
     The rest of the application must depend only on this interface.
+    No service should know which concrete provider is being used.
     """
 
     @abstractmethod

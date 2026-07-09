@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    PROVIDER_TYPE: str = "fake"
+
     SCHEDULER_ENABLED: bool = True
     SCHEDULER_SIMULATOR_INTERVAL_MINUTES: int = 10
     SCHEDULER_ALERT_INTERVAL_MINUTES: int = 10

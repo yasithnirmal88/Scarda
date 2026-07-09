@@ -49,8 +49,8 @@ async def on_startup() -> None:
     _scheduler_startup = SchedulerStartup(scheduler_config)
     _scheduler_startup.start()
     app.state.scheduler_startup = _scheduler_startup
-    from app.providers.fake_provider import FakeDataProvider
-    app.state.provider = FakeDataProvider()
+    from app.providers import create_provider
+    app.state.provider = create_provider()
 
 
 @app.on_event("shutdown")
