@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.inverter import Inverter
+from app.models.master.inverter import Inverter
 
 
 class InverterRepository:

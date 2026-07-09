@@ -5,27 +5,37 @@ Intelligent monitoring system for utility-scale solar power plants.
 ## Project Structure
 
 ```
-backend/
-├── app/
-│   ├── api/endpoints/     # REST API route handlers
-│   ├── api/router.py      # Central API router
-│   ├── api/deps.py        # Shared dependencies
-│   ├── auth/              # JWT, roles, permissions
-│   ├── core/              # Config, security, logging
-│   ├── database/          # Session, Base, init
-│   ├── middleware/        # Auth, error handler, request logger
-│   ├── models/            # SQLAlchemy ORM models
-│   ├── providers/         # Data provider pattern
-│   │   ├── base_provider.py   # IDataProvider interface
-│   │   ├── fake_provider.py   # Hardcoded placeholder data
-│   │   └── huawei/            # Future Huawei integration
-│   ├── repositories/      # CRUD data access layer
-│   ├── schemas/           # Pydantic request/response schemas
-│   ├── services/          # Business logic (placeholder)
-│   └── utils/             # Enums, constants, helpers
-├── alembic/               # Database migrations
-├── requirements.txt
-└── Dockerfile
+├── backend/                  # Application code only
+│   ├── app/
+│   │   ├── api/              # REST API route handlers
+│   │   ├── auth/             # JWT, roles, permissions
+│   │   ├── core/             # Config, security, logging
+│   │   ├── database/         # Session, Base, init
+│   │   ├── middleware/       # Auth, error handler, request logger
+│   │   ├── models/           # SQLAlchemy ORM models
+│   │   ├── providers/        # Data provider pattern
+│   │   ├── repositories/     # CRUD data access layer
+│   │   ├── schemas/          # Pydantic request/response schemas
+│   │   ├── services/         # Business logic
+│   │   └── utils/            # Enums, constants, helpers
+│   ├── alembic/              # Database migrations
+│   ├── tests/                # Unit & integration tests
+│   └── requirements.txt
+│
+├── frontend/                 # React 18 + TypeScript + Vite
+│
+├── infrastructure/           # Deployment & operations
+│   ├── docker/
+│   │   ├── docker-compose.yml    # Service orchestration
+│   │   └── backend.Dockerfile    # Backend container image
+│   ├── database/
+│   │   └── init.sql              # DB schema & seed data
+│   └── nginx/                    # Reverse proxy configs
+│
+├── docs/                     # Documentation
+├── scripts/                  # Automation scripts
+├── .env.example
+└── README.md
 ```
 
 ## Architecture
@@ -49,6 +59,7 @@ class IDataProvider(ABC):
 ```
 
 - `FakeDataProvider` — returns hardcoded JSON
+- `SimulatorDataProvider` — stateful solar farm simulator
 - Future `HuaweiDataProvider` — will connect to Huawei Smart Logger
 
 The rest of the application depends only on `IDataProvider`. Swapping providers requires zero changes outside the provider layer.
@@ -68,7 +79,7 @@ JWT-based with three roles:
 ### Using Docker (recommended)
 
 ```bash
-docker compose up --build
+docker compose -f infrastructure/docker/docker-compose.yml up --build
 ```
 
 Backend API: http://localhost:8000  
@@ -87,8 +98,16 @@ uvicorn app.main:app --reload
 ### Database Migrations (Alembic)
 
 ```bash
+cd backend
 alembic revision --autogenerate -m "description"
 alembic upgrade head
+```
+
+### Running Tests
+
+```bash
+cd backend
+python -m pytest tests/ -v
 ```
 
 ## Environment Variables

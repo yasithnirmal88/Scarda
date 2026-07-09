@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.alert import Alert
+from app.models.telemetry.alert import Alert
 
 
 class AlertRepository:

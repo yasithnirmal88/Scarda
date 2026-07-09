@@ -5,6 +5,7 @@ from app.api.endpoints import (
     auth,
     inverters,
     maintenance,
+    monitoring,
     readings,
     reports,
     sections,
@@ -26,4 +27,5 @@ api_router.include_router(weather.router, prefix="/weather", tags=["Weather"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 api_router.include_router(maintenance.router, prefix="/maintenance", tags=["Maintenance"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
+api_router.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])

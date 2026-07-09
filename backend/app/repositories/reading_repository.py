@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.string_reading import StringReading
+from app.models.telemetry.string_reading import StringReading
 
 
 class ReadingRepository:

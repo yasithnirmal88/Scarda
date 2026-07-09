@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.string import String
+from app.models.master.string import String
 
 
 class StringRepository:

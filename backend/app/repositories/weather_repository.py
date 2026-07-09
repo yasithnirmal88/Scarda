@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.weather_reading import WeatherReading
+from app.models.telemetry.weather_reading import WeatherReading
 
 
 class WeatherRepository:

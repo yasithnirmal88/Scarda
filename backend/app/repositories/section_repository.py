@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.section import Section
+from app.models.master.section import Section
 
 
 class SectionRepository:

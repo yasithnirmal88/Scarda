@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from app.models.user import User
+from app.models.auth.user import User
 
 
 class UserRepository:

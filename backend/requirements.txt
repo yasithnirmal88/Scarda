@@ -9,3 +9,5 @@ pydantic[email]==2.9.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
+apscheduler==3.11.3
+psutil==7.0.0
