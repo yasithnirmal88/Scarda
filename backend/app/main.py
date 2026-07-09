@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,28 @@ app.include_router(api_router, prefix="/api")
 
 _scheduler_startup: SchedulerStartup | None = None
 
+# ──────────────────────── WebSocket lifecycle ─────────────────────────
+
+_manager: Any | None = None
+_broadcaster: Any | None = None
+
+
+def get_websocket_app() -> tuple[Any, Any]:
+    """Lazy-init and return (manager, broadcaster)."""
+    global _manager, _broadcaster
+
+    if _manager is None:
+        from app.websocket.manager import ClientManager
+        from app.websocket.broadcaster import Broadcaster
+
+        _manager = ClientManager(heartbeat_interval=30)
+        _broadcaster = Broadcaster(_manager)
+
+    return _manager, _broadcaster
+
+
+# ──────────────────────── Application startup ─────────────────────────
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
@@ -46,11 +69,26 @@ async def on_startup() -> None:
         "cleanup_interval_hours": settings.SCHEDULER_CLEANUP_INTERVAL_HOURS,
         "stats_interval_minutes": settings.SCHEDULER_STATS_INTERVAL_MINUTES,
     }
-    _scheduler_startup = SchedulerStartup(scheduler_config)
+
+    from app.providers import create_provider
+    provider = create_provider()
+    app.state.provider = provider
+
+    manager, broadcaster = get_websocket_app()
+    app.state.websocket_manager = manager
+    app.state.websocket_broadcaster = broadcaster
+    logger.info("WebSocket manager and broadcaster initialized")
+
+    _scheduler_startup = SchedulerStartup(
+        scheduler_config,
+        shared_context={
+            "broadcaster": broadcaster,
+            "provider": provider,
+            "app": app,
+        },
+    )
     _scheduler_startup.start()
     app.state.scheduler_startup = _scheduler_startup
-    from app.providers import create_provider
-    app.state.provider = create_provider()
 
 
 @app.on_event("shutdown")
@@ -59,9 +97,15 @@ async def on_shutdown() -> None:
         _scheduler_startup.shutdown()
 
 
+# ──────────────────────── Root endpoint ────────────────────────────────
+
+
 @app.get("/")
 async def root():
     return {"app": settings.APP_NAME, "version": "0.1.0", "status": "running"}
+
+
+# ──────────────────────── Scheduler API ────────────────────────────────
 
 
 @app.get("/api/scheduler/jobs")
@@ -93,3 +137,10 @@ async def stop_scheduler_job(job_id: str):
         return {"ok": False}
     ok = _scheduler_startup.scheduler.stop_job(job_id)
     return {"ok": ok}
+
+
+# ──────────────────── WebSocket route (handled by router) ──────────────
+
+# The /ws endpoint is registered via app/api/router.py which includes the
+# websocket router.  This ensures the app.state is available when the
+# WebSocket handshake occurs.

@@ -18,6 +18,7 @@ class SchedulerService:
         self,
         func: Any,
         trigger: str,
+        kwargs: dict[str, Any] | None = None,
         **trigger_args: Any,
     ) -> Job | None:
         job_id = trigger_args.pop("id", None)
@@ -27,6 +28,7 @@ class SchedulerService:
                 trigger,
                 id=job_id,
                 replace_existing=True,
+                kwargs=kwargs,
                 **trigger_args,
             )
             logger.info("Job registered: %s (trigger=%s)", job_id or func.__name__, trigger)

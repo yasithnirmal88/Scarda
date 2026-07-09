@@ -15,8 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 class SchedulerStartup:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        shared_context: dict[str, Any] | None = None,
+    ) -> None:
         self._config = config
+        self._shared_context = shared_context or {}
         self._scheduler = SchedulerService(config)
 
     def register_jobs(self) -> None:
@@ -24,7 +29,7 @@ class SchedulerStartup:
             logger.info("Scheduler is disabled by configuration")
             return
 
-        jobs_config = [
+        job_defs = [
             {
                 "id": "simulator",
                 "func": simulator_job,
@@ -51,11 +56,13 @@ class SchedulerStartup:
             },
         ]
 
-        for job_cfg in jobs_config:
+        for job_cfg in job_defs:
             func = job_cfg.pop("func")
             job_id = job_cfg["id"]
             trigger = job_cfg.pop("trigger")
-            self._scheduler.register_job(func, trigger, **job_cfg)
+            self._scheduler.register_job(
+                func, trigger, kwargs=self._shared_context, **job_cfg,
+            )
             logger.info("Registered job: %s", job_id)
 
     def start(self) -> None:
