@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any
-
-from app.services.alert_engine.types import AlertData, AlertState
+from app.services.alert_engine.types import AlertData
+from app.utils.enums import AlertState
 
 logger = logging.getLogger(__name__)
 

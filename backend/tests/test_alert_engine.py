@@ -6,7 +6,8 @@ import pytest
 
 from app.services.alert_engine.alert_engine import AlertEngine
 from app.services.alert_engine.config import AlertEngineConfig
-from app.services.alert_engine.types import AlertState, Reading
+from app.services.alert_engine.types import Reading
+from app.utils.enums import AlertState
 
 
 def _reading(

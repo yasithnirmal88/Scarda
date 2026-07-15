@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 
@@ -8,7 +8,7 @@ from app.config import settings
 def create_access_token(data: dict) -> str:
     """Create a signed JWT access token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=settings.jwt.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.jwt.SECRET_KEY, algorithm=settings.jwt.ALGORITHM)
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 from app.services.alert_engine.types import Baseline, Deviation, Reading
 
 logger = logging.getLogger(__name__)

@@ -1,25 +1,18 @@
+"""Core data types for the alert engine.
+
+Defines reading input, baseline, deviation, rule results, pending entries,
+and alert data structures. Enums are imported from the canonical location
+in ``app.utils.enums`` to avoid duplication.
+"""
+
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-class AlertState(str, enum.Enum):
-    PENDING = "pending"
-    ACTIVE = "active"
-    ACKNOWLEDGED = "acknowledged"
-    RESOLVED = "resolved"
-    SUPPRESSED = "suppressed"
-
-
-class AlertSeverity(str, enum.Enum):
-    INFO = "info"
-    WARNING = "warning"
-    CRITICAL = "critical"
+from app.utils.enums import AlertSeverity, AlertState
 
 
 class Reading(BaseModel):

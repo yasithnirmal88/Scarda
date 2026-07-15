@@ -1,3 +1,9 @@
+"""WebSocket route handler.
+
+Handles the /ws endpoint, including client lifecycle, heartbeat
+(ping/pong), and topic-based subscribe/unsubscribe functionality.
+"""
+
 from __future__ import annotations
 
 import json
@@ -6,11 +12,14 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.websocket.broadcaster import TOPIC_ALERTS, TOPIC_READINGS, TOPIC_WEATHER
 from app.websocket.manager import ClientManager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+VALID_TOPICS = {TOPIC_READINGS, TOPIC_ALERTS, TOPIC_WEATHER}
 
 
 @router.websocket("/ws")
@@ -36,14 +45,34 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 await manager.send_to(client_id, pong)
 
             elif msg_type == "subscribe":
-                logger.info("Client %s subscribed to events", client_id)
+                topic = msg.get("topic", "")
+                if topic not in VALID_TOPICS:
+                    await manager.send_to(client_id, {
+                        "type": "error",
+                        "message": f"invalid topic: {topic}. Valid topics: {sorted(VALID_TOPICS)}",
+                    })
+                    continue
+                manager.subscribe(client_id, topic)
                 await manager.send_to(client_id, {
                     "type": "subscribed",
                     "client_id": client_id,
+                    "topic": topic,
                 })
 
             elif msg_type == "unsubscribe":
-                logger.info("Client %s unsubscribed", client_id)
+                topic = msg.get("topic", "")
+                if topic not in VALID_TOPICS:
+                    await manager.send_to(client_id, {
+                        "type": "error",
+                        "message": f"invalid topic: {topic}. Valid topics: {sorted(VALID_TOPICS)}",
+                    })
+                    continue
+                manager.unsubscribe(client_id, topic)
+                await manager.send_to(client_id, {
+                    "type": "unsubscribed",
+                    "client_id": client_id,
+                    "topic": topic,
+                })
 
             else:
                 await manager.send_to(client_id, {

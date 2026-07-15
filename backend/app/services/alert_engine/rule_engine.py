@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
-
 from app.services.alert_engine.config import AlertEngineConfig
-from app.services.alert_engine.types import AlertSeverity, Baseline, Deviation, Reading, RuleResult
+from app.services.alert_engine.types import Baseline, Deviation, Reading, RuleResult
+from app.utils.enums import AlertSeverity
 
 logger = logging.getLogger(__name__)
 

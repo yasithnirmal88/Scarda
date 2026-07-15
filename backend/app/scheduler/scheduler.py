@@ -1,3 +1,9 @@
+"""APScheduler wrapper service.
+
+Provides a clean interface for managing background jobs with
+start, shutdown, pause, resume, and stop capabilities.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -14,6 +20,11 @@ class SchedulerService:
         self._scheduler = AsyncIOScheduler()
         self._config = config or {}
 
+    @property
+    def is_running(self) -> bool:
+        """Check if the underlying scheduler is currently running."""
+        return self._scheduler.running
+
     def register_job(
         self,
         func: Any,
@@ -21,7 +32,7 @@ class SchedulerService:
         kwargs: dict[str, Any] | None = None,
         **trigger_args: Any,
     ) -> Job | None:
-        job_id = trigger_args.pop("id", None)
+        job_id = trigger_args.pop("id", None) if "id" in trigger_args else None
         try:
             job = self._scheduler.add_job(
                 func,

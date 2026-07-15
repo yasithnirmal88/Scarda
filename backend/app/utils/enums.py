@@ -1,3 +1,9 @@
+"""Centralized enum definitions for the application.
+
+All enums used across models, services, and the alert engine are defined here
+to ensure a single source of truth and avoid duplicate definitions.
+"""
+
 import enum
 
 
@@ -30,6 +36,15 @@ class AlertStatus(str, enum.Enum):
     ACTIVE = "active"
     ACKNOWLEDGED = "acknowledged"
     RESOLVED = "resolved"
+
+
+class AlertState(str, enum.Enum):
+    """Lifecycle states for alerts in the alert engine."""
+    PENDING = "pending"
+    ACTIVE = "active"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    SUPPRESSED = "suppressed"
 
 
 class MaintenanceStatus(str, enum.Enum):

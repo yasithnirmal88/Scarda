@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 from datetime import datetime
-from typing import Any
 
 from simulator.models import FaultConfig, StringStatus
 from simulator.plant_config import PLANT, PlantConfig

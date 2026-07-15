@@ -1,3 +1,9 @@
+"""Scheduler initialization and job registration.
+
+Creates and configures the background scheduler with all registered jobs
+from the application configuration.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -57,11 +63,16 @@ class SchedulerStartup:
         ]
 
         for job_cfg in job_defs:
-            func = job_cfg.pop("func")
+            func = job_cfg["func"]
             job_id = job_cfg["id"]
-            trigger = job_cfg.pop("trigger")
+            trigger = job_cfg["trigger"]
+            # Build remaining trigger args, excluding func/id/trigger
+            trigger_args = {
+                k: v for k, v in job_cfg.items()
+                if k not in ("func", "id", "trigger")
+            }
             self._scheduler.register_job(
-                func, trigger, kwargs=self._shared_context, **job_cfg,
+                func, trigger, kwargs=self._shared_context, id=job_id, **trigger_args,
             )
             logger.info("Registered job: %s", job_id)
 

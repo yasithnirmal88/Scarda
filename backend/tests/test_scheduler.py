@@ -9,7 +9,7 @@ from app.scheduler.scheduler import SchedulerService
 async def test_start_and_shutdown() -> None:
     svc = SchedulerService()
     svc.start()
-    assert svc._scheduler.running
+    assert svc.is_running
     svc.shutdown(wait=False)
 
 

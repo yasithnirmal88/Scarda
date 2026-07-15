@@ -1,3 +1,9 @@
+"""FastAPI application entry point.
+
+Creates the app, adds middleware, registers routes, initializes
+the database, data provider, WebSocket manager, and background scheduler.
+"""
+
 import logging
 from typing import Any
 
@@ -53,7 +59,10 @@ def get_websocket_app() -> tuple[Any, Any]:
         from app.websocket.manager import ClientManager
         from app.websocket.broadcaster import Broadcaster
 
-        _manager = ClientManager(heartbeat_interval=30)
+        _manager = ClientManager(
+            heartbeat_interval=settings.websocket.HEARTBEAT_INTERVAL,
+            stale_timeout=settings.websocket.STALE_TIMEOUT,
+        )
         _broadcaster = Broadcaster(_manager)
     return _manager, _broadcaster
 
@@ -189,3 +198,10 @@ async def stop_scheduler_job(job_id: str):
         return {"ok": False}
     ok = _scheduler_startup.scheduler.stop_job(job_id)
     return {"ok": ok}
+
+
+# ──────────────────── WebSocket route (handled by router) ──────────────
+
+# The /ws endpoint is registered via app/api/router.py which includes the
+# websocket router.  This ensures the app.state is available when the
+# WebSocket handshake occurs.

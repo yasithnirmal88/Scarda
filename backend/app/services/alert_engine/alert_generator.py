@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
-
 from app.services.alert_engine.config import AlertEngineConfig
 from app.services.alert_engine.recommandations import get_recommendation
-from app.services.alert_engine.types import AlertData, AlertSeverity, AlertState, Deviation, RuleResult
+from app.services.alert_engine.types import AlertData, Deviation, RuleResult
+from app.utils.enums import AlertSeverity, AlertState
 
 logger = logging.getLogger(__name__)
 

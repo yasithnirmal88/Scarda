@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
-
 from app.services.alert_engine.alert_generator import AlertGenerator
 from app.services.alert_engine.alert_repository import BaseAlertRepository, InMemoryAlertRepository
 from app.services.alert_engine.baseline_provider import BaseBaselineProvider, StaticBaselineProvider
@@ -21,7 +19,8 @@ from app.services.alert_engine.rule_engine import (
     RuleRegistry,
     VoltageLowRule,
 )
-from app.services.alert_engine.types import AlertData, AlertState, Reading
+from app.services.alert_engine.types import AlertData, Reading
+from app.utils.enums import AlertState
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +101,11 @@ class AlertEngine:
 
     def get_active_alerts(self) -> list[AlertData]:
         return self._repository.get_active()
+
+    @property
+    def confirmation_pending_count(self) -> int:
+        """Return the number of pending (unconfirmed) alert entries."""
+        return self._confirmation_engine.pending_count
 
     def get_alert_history(self, limit: int = 100) -> list[AlertData]:
         return self._repository.get_history(limit)

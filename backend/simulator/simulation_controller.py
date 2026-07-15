@@ -1,8 +1,15 @@
+"""Top-level simulation orchestrator.
+
+Composes TimeEngine, WeatherEngine, FaultEngine, and ReadingGenerator
+to produce a continuous, stateful simulation of a solar farm. All random
+operations use a dedicated ``random.Random`` instance for deterministic,
+reproducible behavior.
+"""
+
 from __future__ import annotations
 
 import random
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
 
 from simulator.exporters import export_csv, export_json
 from simulator.fault_engine import FaultEngine
@@ -11,6 +18,12 @@ from simulator.plant_config import PLANT, PlantConfig
 from simulator.reading_generator import ReadingGenerator
 from simulator.time_engine import TimeEngine
 from simulator.weather_engine import WeatherEngine
+
+# Compass directions for wind direction simulation
+WIND_DIRECTIONS: list[str] = [
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+]
 
 
 class SimulationController:
@@ -35,8 +48,7 @@ class SimulationController:
         self._config = config or SimulatorConfig()
         self._plant = plant
 
-        if self._config.seed is not None:
-            random.seed(self._config.seed)
+        self._rng = random.Random(self._config.seed)
 
         rs = self._config.seed
         self._weather = WeatherEngine(seed=rs)
@@ -104,7 +116,7 @@ class SimulationController:
 
     # --- IDataProvider-compatible methods -----------------------------------
 
-    async def get_current_readings(self) -> dict[str, Any]:
+    async def get_current_readings(self) -> dict:
         """Return current readings for the whole plant."""
         readings = self.generate_reading()
         return {
@@ -113,13 +125,14 @@ class SimulationController:
             "active_inverters": self._plant.total_inverters,
             "total_inverters": self._plant.total_inverters,
             "readings": [r.to_dict() for r in readings],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    async def get_weather(self) -> dict[str, Any]:
+    async def get_weather(self) -> dict:
         """Return current weather conditions."""
-        weather = self._weather.get_weather(datetime.now())
-        irr = self._weather.effective_irradiance(datetime.now())
+        now = datetime.now()
+        weather = self._weather.get_weather(now)
+        irr = self._weather.effective_irradiance(now)
         return {
             "temperature_c": weather.temperature_base,
             "humidity_pct": weather.humidity_base,
@@ -128,15 +141,15 @@ class SimulationController:
             "wind_direction": self._random_wind_dir(),
             "precipitation_mm": round(
                 0.0 if weather.weather_type.value == "sunny"
-                else random.uniform(0, 5), 2,
+                else self._rng.uniform(0, 5), 2,
             ),
             "description": weather.description,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     async def get_historical_readings(
         self, start: datetime, end: datetime,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict]:
         """Return historical string readings within a time range."""
         all_readings: list[StringReading] = []
         for ts in self._time.generate_timestamps(start, end):
@@ -145,9 +158,9 @@ class SimulationController:
 
     async def get_historical_weather(
         self, start: datetime, end: datetime,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict]:
         """Return historical weather data within a time range."""
-        records: list[dict[str, Any]] = []
+        records: list[dict] = []
         for ts in self._time.generate_timestamps(start, end):
             w = self._weather.get_weather(ts)
             irr = self._weather.effective_irradiance(ts)
@@ -161,7 +174,7 @@ class SimulationController:
             })
         return records
 
-    async def health_check(self) -> dict[str, Any]:
+    async def health_check(self) -> dict:
         return {
             "status": "healthy",
             "provider": "simulator",
@@ -170,13 +183,9 @@ class SimulationController:
             "total_inverters": self._plant.total_inverters,
         }
 
-    @staticmethod
-    def _random_wind_dir() -> str:
-        dirs = [
-            "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
-        ]
-        return random.choice(dirs)
+    def _random_wind_dir(self) -> str:
+        """Return a random compass direction using the instance RNG."""
+        return self._rng.choice(WIND_DIRECTIONS)
 
     # --- export helpers -----------------------------------------------------
 

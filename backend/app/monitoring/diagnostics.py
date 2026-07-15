@@ -41,7 +41,7 @@ async def get_diagnostics(
     scheduler_info: dict[str, Any] = {"status": "unavailable"}
     if scheduler_startup is not None:
         try:
-            running = scheduler_startup.scheduler._scheduler.running
+            running = scheduler_startup.scheduler.is_running
             jobs = scheduler_startup.scheduler.get_jobs()
             scheduler_info = {
                 "status": "running" if running else "stopped",

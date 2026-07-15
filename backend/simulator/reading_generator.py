@@ -1,10 +1,17 @@
+"""Stateful per-string reading generator.
+
+Maintains a ``StringState`` for each PV string across generation cycles.
+Values evolve smoothly with slew-rate limiting, thermal inertia, and
+slow degradation accumulation. Fault injection is handled externally
+by the ``FaultEngine``.
+"""
+
 from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from simulator.models import StringReading, StringStatus
 from simulator.plant_config import PLANT, PlantConfig
@@ -70,11 +77,18 @@ def _slew(value: float, target: float, max_up: float, max_down: float) -> float:
     return value - min(value - target, max_down)
 
 
-def _drift(value: float, center: float, step: float) -> float:
-    """Random walk around *center* with a mean-reverting pull."""
+def _drift(value: float, center: float, step: float, rng: random.Random) -> float:
+    """Random walk around *center* with a mean-reverting pull.
+
+    Parameters
+    ----------
+    rng : random.Random
+        Seeded RNG instance for deterministic behavior.
+    """
     diff = center - value
-    pull = diff * 0.002  # very gentle pull toward centre
-    noise = random.uniform(-step, step)
+    MEAN_REVERT_PULL = 0.002  # very gentle pull toward centre
+    pull = diff * MEAN_REVERT_PULL
+    noise = rng.uniform(-step, step)
     return value + pull + noise
 
 
@@ -101,6 +115,47 @@ class ReadingGenerator:
     I_MAX_DOWN = 0.8
     T_MAX_UP = 1.2       # °C     / cycle
     T_MAX_DOWN = 0.8
+
+    # Electrical baseline targets
+    BASE_VOLTAGE_TARGET = 820.0
+    BASE_CURRENT_TARGET = 9.5
+    BASE_VOLTAGE_MIN = 700.0
+    BASE_VOLTAGE_MAX = 950.0
+    BASE_CURRENT_MIN = 6.0
+    BASE_CURRENT_MAX = 12.0
+
+    # Irradiance normalization reference
+    IRRADIANCE_REFERENCE = 1000.0
+
+    # Voltage scaling with irradiance
+    V_FRACTION_LOW = 0.85
+    V_FRACTION_HIGH = 0.15
+    V_OPEN_CIRCUIT_MULT = 1.15
+
+    # Fault multipliers for current
+    DIRTY_PANEL_I_MIN = 0.60
+    DIRTY_PANEL_I_MAX = 0.80
+    SHADING_I_MIN = 0.50
+    SHADING_I_MAX = 0.85
+
+    # Degradation thresholds
+    DEGRADATION_PROBABILITY = 0.0005  # ~ once per 2000 cycles (~14 days)
+    DEGRADATION_MIN = 0.01
+    DEGRADATION_MAX = 0.05
+
+    # Panel temperature offset range
+    PANEL_TEMP_OFFSET_MIN = 8.0
+    PANEL_TEMP_OFFSET_MAX = 18.0
+
+    # Default fault durations (cycles)
+    FAULT_DURATIONS: dict[StringStatus, tuple[int, int]] = {
+        StringStatus.DIRTY_PANEL: (6, 48),
+        StringStatus.PARTIAL_SHADING: (3, 24),
+        StringStatus.DISCONNECTED: (12, 72),
+        StringStatus.OPEN_CIRCUIT: (6, 36),
+        StringStatus.SENSOR_FAILURE: (1, 6),
+    }
+    DEFAULT_FAULT_DURATION = 6
 
     def __init__(
         self,
@@ -153,7 +208,7 @@ class ReadingGenerator:
 
         irr = self._weather.effective_irradiance(dt)
         weather = self._weather.get_weather(dt)
-        irr_fraction = irr / 1000.0
+        irr_fraction = irr / self.IRRADIANCE_REFERENCE
         is_day = irr > 1.0
 
         readings: list[StringReading] = []
@@ -201,7 +256,7 @@ class ReadingGenerator:
             st._target_current = 0.0
         else:
             # Voltage is fairly flat across irradiance; drops slightly at low irr
-            v_target = st.base_voltage * (0.85 + 0.15 * irr_fraction)
+            v_target = st.base_voltage * (self.V_FRACTION_LOW + self.V_FRACTION_HIGH * irr_fraction)
             # Current is proportional to irradiance
             i_target = st.base_current_capacity * irr_fraction
 
@@ -213,12 +268,12 @@ class ReadingGenerator:
                 v_target = 0.0
                 i_target = 0.0
             elif st.fault == StringStatus.OPEN_CIRCUIT:
-                v_target = st.base_voltage * 1.15  # voltage rises
+                v_target = st.base_voltage * self.V_OPEN_CIRCUIT_MULT  # voltage rises
                 i_target = 0.0
             elif st.fault == StringStatus.DIRTY_PANEL:
-                i_target *= self._rng.uniform(0.60, 0.80)
+                i_target *= self._rng.uniform(self.DIRTY_PANEL_I_MIN, self.DIRTY_PANEL_I_MAX)
             elif st.fault == StringStatus.PARTIAL_SHADING:
-                i_target *= self._rng.uniform(0.50, 0.85)
+                i_target *= self._rng.uniform(self.SHADING_I_MIN, self.SHADING_I_MAX)
 
             st._target_voltage = v_target
             st._target_current = i_target
@@ -232,16 +287,16 @@ class ReadingGenerator:
         st.power = st.voltage * st.current
 
         # Drift intrinsic capacity very slowly (over days)
-        st.base_voltage = _drift(st.base_voltage, 820.0, 0.3)
-        st.base_current_capacity = _drift(st.base_current_capacity, 9.5, 0.01)
-        st.base_voltage = max(700.0, min(950.0, st.base_voltage))
-        st.base_current_capacity = max(6.0, min(12.0, st.base_current_capacity))
+        st.base_voltage = _drift(st.base_voltage, self.BASE_VOLTAGE_TARGET, 0.3, self._rng)
+        st.base_current_capacity = _drift(st.base_current_capacity, self.BASE_CURRENT_TARGET, 0.01, self._rng)
+        st.base_voltage = max(self.BASE_VOLTAGE_MIN, min(self.BASE_VOLTAGE_MAX, st.base_voltage))
+        st.base_current_capacity = max(self.BASE_CURRENT_MIN, min(self.BASE_CURRENT_MAX, st.base_current_capacity))
 
     def _step_temperature(
         self, st: StringState, irr_fraction: float, ambient: float
     ) -> None:
         """Panel temperature lags behind irradiance with thermal inertia."""
-        panel_offset = self._rng.uniform(8.0, 18.0)
+        panel_offset = self._rng.uniform(self.PANEL_TEMP_OFFSET_MIN, self.PANEL_TEMP_OFFSET_MAX)
         target_temp = ambient + panel_offset * irr_fraction
         st.panel_temperature = _slew(
             st.panel_temperature, target_temp, self.T_MAX_UP, self.T_MAX_DOWN
@@ -257,8 +312,8 @@ class ReadingGenerator:
 
     def _step_degradation(self, st: StringState) -> None:
         """Slowly accumulate irreversible degradation."""
-        if self._rng.random() < 0.0005:  # ~ once per 2000 cycles (~14 days)
-            st.degradation_level = min(1.0, st.degradation_level + self._rng.uniform(0.01, 0.05))
+        if self._rng.random() < self.DEGRADATION_PROBABILITY:
+            st.degradation_level = min(1.0, st.degradation_level + self._rng.uniform(self.DEGRADATION_MIN, self.DEGRADATION_MAX))
 
     # ------------------------------------------------------------------
     # Fault injection (called externally by FaultEngine)
@@ -275,20 +330,14 @@ class ReadingGenerator:
         if st is None:
             return
 
-        durations: dict[StringStatus, int] = {
-            StringStatus.DIRTY_PANEL: self._rng.randint(6, 48),
-            StringStatus.PARTIAL_SHADING: self._rng.randint(3, 24),
-            StringStatus.DISCONNECTED: self._rng.randint(12, 72),
-            StringStatus.OPEN_CIRCUIT: self._rng.randint(6, 36),
-            StringStatus.SENSOR_FAILURE: self._rng.randint(1, 6),
-            StringStatus.DEGRADED: 0,  # permanent until cleared externally
-        }
         st.fault = fault
-        st.fault_cycles_remaining = (
-            duration_cycles
-            if duration_cycles is not None
-            else durations.get(fault, 6)
-        )
+        if duration_cycles is not None:
+            st.fault_cycles_remaining = duration_cycles
+        elif fault in self.FAULT_DURATIONS:
+            lo, hi = self.FAULT_DURATIONS[fault]
+            st.fault_cycles_remaining = self._rng.randint(lo, hi)
+        else:
+            st.fault_cycles_remaining = self.DEFAULT_FAULT_DURATION
 
     def inject_inverter_fault(self, inverter_id: str) -> None:
         """Fault every string under an inverter."""

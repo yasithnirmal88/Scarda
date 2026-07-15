@@ -1,5 +1,3 @@
-from typing import Any
-
 RECOMMENDATIONS: dict[str, str] = {
     "current_low": "Inspect panel for dirt, shading, or soiling.",
     "voltage_low": "Check string cable connections and junction boxes.",
