@@ -1,8 +1,31 @@
-import { CloudSun, Thermometer, Wind, Droplets } from 'lucide-react';
-import { mockWeather } from '../../mock/fakeData';
+import { CloudSun, Thermometer, Wind, Droplets, Loader } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { weatherService } from '../../services/weatherService';
 
 export function WeatherWidget() {
-  const w = mockWeather;
+  const { data: w, isLoading, isError } = useQuery({
+    queryKey: ['weather'],
+    queryFn: weatherService.getCurrent,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 flex items-center justify-center h-40">
+        <Loader className="animate-spin text-gray-400" size={20} />
+      </div>
+    );
+  }
+
+  if (isError || !w) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Weather data unavailable</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
       <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">

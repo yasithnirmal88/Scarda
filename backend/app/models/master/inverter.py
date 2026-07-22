@@ -12,6 +12,7 @@ class Inverter(Base):
     __tablename__ = "inverters"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     section_id: Mapped[int] = mapped_column(Integer, ForeignKey("sections.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_number: Mapped[str | None] = mapped_column(String(100), nullable=True)

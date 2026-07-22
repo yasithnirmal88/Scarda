@@ -12,6 +12,7 @@ class String(Base):
     __tablename__ = "strings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     inverter_id: Mapped[int] = mapped_column(Integer, ForeignKey("inverters.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     panel_count: Mapped[int] = mapped_column(Integer, default=0)

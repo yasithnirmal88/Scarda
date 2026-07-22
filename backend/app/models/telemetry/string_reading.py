@@ -10,9 +10,9 @@ from app.database.base import Base
 class StringReading(Base):
     __tablename__ = "string_readings"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, index=True)
     string_id: Mapped[int] = mapped_column(Integer, ForeignKey("strings.id"), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True, server_default=func.now())
     voltage: Mapped[float | None] = mapped_column(Float, nullable=True)
     current: Mapped[float | None] = mapped_column(Float, nullable=True)
     power: Mapped[float | None] = mapped_column(Float, nullable=True)

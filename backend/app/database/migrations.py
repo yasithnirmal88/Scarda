@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from alembic.util.exc import CommandError
 
 from app.database.base import Base
 from app.database.engine import engine
@@ -23,19 +23,48 @@ from app.models import (  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+_CREATED: bool = False
+
 
 def init_database() -> None:
-    logger.info("Creating database tables...")
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created successfully")
+    global _CREATED
+    if _CREATED:
+        return
+
+    logger.info("Initializing database schema...")
+
+    success = run_alembic_migrations()
+    if success:
+        _CREATED = True
+        logger.info("Alembic migrations applied successfully")
+        return
+
+    logger.warning(
+        "Alembic migration failed — falling back to "
+        "Base.metadata.create_all(). "
+        "For production use 'alembic upgrade head'.",
+    )
+    try:
+        Base.metadata.create_all(bind=engine)
+        _CREATED = True
+        logger.info("Database tables created via metadata.create_all()")
+    except Exception as exc:
+        logger.warning(
+            "Could not create database tables: %s. "
+            "The application will run without persistence. "
+            "Start PostgreSQL and set DATABASE_URL to enable persistence.",
+            exc,
+        )
 
 
 def run_alembic_migrations(alembic_ini_path: str = "alembic.ini") -> bool:
     try:
         alembic_cfg = AlembicConfig(alembic_ini_path)
         command.upgrade(alembic_cfg, "head")
-        logger.info("Alembic migrations applied successfully")
         return True
+    except CommandError:
+        logger.warning("No migrations to apply or Alembic not yet configured")
+        return False
     except Exception:
         logger.exception("Alembic migration failed")
         return False
