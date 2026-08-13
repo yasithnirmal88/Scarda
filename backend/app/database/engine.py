@@ -22,12 +22,19 @@ def build_engine(
     url = database_url or settings.database.URL
     poolclass = NullPool if use_null_pool else QueuePool
 
+    # psycopg2 blocks forever by default if PostgreSQL is down; give the app
+    # a short window so it can fall back to running without persistence.
+    connect_args: dict[str, Any] = {}
+    if url.startswith("postgresql"):
+        connect_args["connect_timeout"] = 3
+
     engine = create_engine(
         url,
         pool_pre_ping=pool_pre_ping,
         pool_size=pool_size if not use_null_pool else None,
         max_overflow=max_overflow if not use_null_pool else None,
         poolclass=poolclass,
+        connect_args=connect_args,
         echo=echo,
     )
 

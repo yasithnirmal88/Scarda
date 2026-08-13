@@ -7,6 +7,7 @@ get_settings() accessor for the entire application.
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.database import DatabaseConfig
+from app.config.huawei import HuaweiConfig
 from app.config.jwt import JWTConfig
 from app.config.scheduler import SchedulerConfig
 from app.config.thresholds import ThresholdConfig
@@ -22,6 +23,7 @@ class AppSettings(BaseSettings):
     PROVIDER_TYPE: str = "fake"
 
     database: DatabaseConfig = DatabaseConfig()
+    huawei: HuaweiConfig = HuaweiConfig()
     jwt: JWTConfig = JWTConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     thresholds: ThresholdConfig = ThresholdConfig()

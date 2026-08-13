@@ -25,8 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 def _get_reading_repo():
+    from app.database.migrations import is_database_available
     from app.repositories.reading_repository import ReadingRepository
 
+    if not is_database_available():
+        return None, None
     try:
         from app.database import get_db
 
@@ -37,8 +40,11 @@ def _get_reading_repo():
 
 
 def _get_weather_repo():
+    from app.database.migrations import is_database_available
     from app.repositories.weather_repository import WeatherRepository
 
+    if not is_database_available():
+        return None, None
     try:
         from app.database import get_db
 

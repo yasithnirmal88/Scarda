@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 _CREATED: bool = False
 
 
+def is_database_available() -> bool:
+    """Return True once the database schema has been initialized successfully.
+
+    Handlers use this to skip persistence attempts when PostgreSQL is
+    unavailable so the app can run without blocking on dead connections.
+    """
+    return _CREATED
+
+
 def init_database() -> None:
     global _CREATED
     if _CREATED:
