@@ -27,6 +27,7 @@ from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
 from app.scheduler.startup import SchedulerStartup
 from app.services.alert_engine.alert_engine import AlertEngine
+from app.services.alert_engine.baseline_provider import HistoricalBaselineProvider
 from app.services.demo_mode import run_demo_once
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,39 @@ def _get_db():
         return None
 
 
+def _build_alert_engine() -> AlertEngine:
+    """Build the AlertEngine with a Tier-2 historical baseline.
+
+    Uses ``HistoricalBaselineProvider`` backed by a ``ReadingRepository``
+    factory that returns ``None`` when the database is unavailable, so the
+    engine degrades gracefully to the Tier-1 physics model (and then to the
+    static baseline when no weather is supplied). Falls back to a plain
+    ``AlertEngine`` if the wiring fails for any reason.
+    """
+    try:
+        from app.repositories.reading_repository import ReadingRepository
+
+        def repo_factory() -> ReadingRepository | None:
+            session = _get_db()
+            if session is None:
+                return None
+            try:
+                return ReadingRepository(session)
+            except Exception:
+                return None
+
+        baseline_provider = HistoricalBaselineProvider(
+            reading_repo_factory=repo_factory,
+        )
+        return AlertEngine(baseline_provider=baseline_provider)
+    except Exception:
+        logger.warning(
+            "Falling back to default AlertEngine (historical baseline unavailable)",
+            exc_info=True,
+        )
+        return AlertEngine()
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     global _scheduler_startup
@@ -113,7 +147,7 @@ async def on_startup() -> None:
     app.state.websocket_broadcaster = broadcaster
     logger.info("WebSocket manager and broadcaster initialized")
 
-    alert_engine = AlertEngine()
+    alert_engine = _build_alert_engine()
     app.state.alert_engine = alert_engine
     logger.info("AlertEngine initialized")
 

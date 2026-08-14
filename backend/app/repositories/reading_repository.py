@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
@@ -93,3 +93,43 @@ class ReadingRepository:
             .scalar()
             or 0
         )
+
+    def median_power_for_conditions(
+        self,
+        string_id: int,
+        irradiance: float,
+        temperature: float,
+        irradiance_band: float = 100.0,
+        temp_band: float = 3.0,
+        lookback_days: int = 14,
+        min_samples: int = 5,
+    ) -> float | None:
+        """Median power a string produced under similar conditions.
+
+        Queries historical ``StringReading`` rows for this string within an
+        irradiance band (+/- ``irradiance_band``) and a temperature band
+        (+/- ``temp_band``) over the last ``lookback_days``. Returns the median
+        power, or ``None`` when fewer than ``min_samples`` rows exist (so the
+        caller can fall back to the physics model). Used by the Tier-2
+        historical baseline.
+        """
+        start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        rows = (
+            self.db.query(StringReading.power)
+            .filter(
+                StringReading.string_id == string_id,
+                StringReading.recorded_at >= start,
+                StringReading.irradiance.between(
+                    irradiance - irradiance_band, irradiance + irradiance_band
+                ),
+                StringReading.temperature.between(
+                    temperature - temp_band, temperature + temp_band
+                ),
+            )
+            .all()
+        )
+        powers = sorted(r[0] for r in rows if r[0] is not None)
+        if len(powers) < min_samples:
+            return None
+        mid = len(powers) // 2
+        return float(powers[mid])

@@ -8,6 +8,22 @@ RUN npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY infrastructure/nginx/frontend.conf /etc/nginx/conf.d/default.conf
+
+# Inline nginx config so the Dockerfile is self-contained and doesn't depend
+# on infrastructure/nginx/frontend.conf being inside the (frontend-scoped)
+# build context. SPA fallback + /api proxy to the backend service.
+RUN printf 'server {\n\
+    listen 80;\n\
+    server_name _;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / { try_files $uri $uri/ /index.html; }\n\
+    location /api/ {\n\
+        proxy_pass http://backend:8000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
