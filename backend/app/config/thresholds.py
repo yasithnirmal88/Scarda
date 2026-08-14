@@ -24,3 +24,14 @@ class ThresholdConfig(BaseSettings):
     BASELINE_CURRENT: float = 10.0
     BASELINE_VOLTAGE: float = 820.0
     BASELINE_POWER: float = 8200.0
+
+    # Weather-aware physics-model baseline (Tier 1).
+    # Expected output scales with irradiance and temperature rather than
+    # being a fixed constant, so a cloud/night drop in generation is not
+    # mistaken for a fault.
+    STC_IRRADIANCE_WPM2: float = 1000.0          # Standard Test Conditions irradiance
+    TEMP_COEFFICIENT_PCT: float = -0.4            # %/C, power drops ~0.4% per C above 25
+    RATED_POWER_PER_STRING_W: float = 250.0     # String nameplate at STC
+    RATED_VOLTAGE_V: float = 820.0              # nominal string voltage (weather-insensitive)
+    RATED_CURRENT_A: float = 10.0               # nominal string current at STC
+    NIGHT_IRRADIANCE_WPM2: float = 20.0         # below this -> treat as night, no output expected

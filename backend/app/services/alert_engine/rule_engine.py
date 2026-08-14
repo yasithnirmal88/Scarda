@@ -102,6 +102,14 @@ class PowerLowRule(BaseRule):
 
 class OfflineRule(BaseRule):
     def evaluate(self, reading: Reading, baseline: Baseline, deviation: Deviation) -> RuleResult | None:
+        # At night (low irradiance) a dark string is expected, not a fault.
+        # Only suppress when we actually have an irradiance reading; when it is
+        # unknown we keep the safe default of alerting.
+        if (
+            reading.irradiance is not None
+            and reading.irradiance <= self._config.night_irradiance_wpm2
+        ):
+            return None
         if reading.current is None or reading.voltage is None:
             return None
         current_ok = reading.current <= self._config.offline_current_threshold

@@ -4,7 +4,11 @@ import logging
 from datetime import datetime
 from app.services.alert_engine.alert_generator import AlertGenerator
 from app.services.alert_engine.alert_repository import BaseAlertRepository, InMemoryAlertRepository
-from app.services.alert_engine.baseline_provider import BaseBaselineProvider, StaticBaselineProvider
+from app.services.alert_engine.baseline_provider import (
+    BaseBaselineProvider,
+    StaticBaselineProvider,
+    WeatherAwareBaselineProvider,
+)
 from app.services.alert_engine.config import AlertEngineConfig
 from app.services.alert_engine.confirmation_engine import (
     ConfirmationEngine,
@@ -33,7 +37,7 @@ class AlertEngine:
         repository: BaseAlertRepository | None = None,
     ) -> None:
         self._config = config or AlertEngineConfig()
-        self._baseline_provider = baseline_provider or StaticBaselineProvider(self._config)
+        self._baseline_provider = baseline_provider or WeatherAwareBaselineProvider(self._config)
         self._repository = repository or InMemoryAlertRepository()
         self._deviation_calculator = DeviationCalculator()
         self._confirmation_engine = ConfirmationEngine(self._config)
@@ -50,7 +54,13 @@ class AlertEngine:
     def process_reading(self, reading: Reading) -> list[AlertData]:
         alerts: list[AlertData] = []
 
-        baseline = self._baseline_provider.get_baseline(reading.string_id)
+        weather = None
+        if reading.irradiance is not None or reading.ambient_temperature is not None:
+            weather = {
+                "irradiance": reading.irradiance,
+                "ambient_temperature": reading.ambient_temperature,
+            }
+        baseline = self._baseline_provider.get_baseline(reading.string_id, weather)
         deviation = self._deviation_calculator.calculate_deviation(reading, baseline)
         results = self._rule_registry.evaluate_all(reading, baseline, deviation)
 

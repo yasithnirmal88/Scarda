@@ -36,6 +36,14 @@ class AlertEngineConfig:
     baseline_voltage: float = settings.thresholds.BASELINE_VOLTAGE
     baseline_power: float = settings.thresholds.BASELINE_POWER
 
+    # Weather-aware physics-model baseline (Tier 1)
+    stc_irradiance_wpm2: float = settings.thresholds.STC_IRRADIANCE_WPM2
+    temp_coefficient_pct: float = settings.thresholds.TEMP_COEFFICIENT_PCT
+    rated_power_per_string_w: float = settings.thresholds.RATED_POWER_PER_STRING_W
+    rated_voltage_v: float = settings.thresholds.RATED_VOLTAGE_V
+    rated_current_a: float = settings.thresholds.RATED_CURRENT_A
+    night_irradiance_wpm2: float = settings.thresholds.NIGHT_IRRADIANCE_WPM2
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "current_threshold_pct": self.current_threshold_pct,
@@ -49,6 +57,12 @@ class AlertEngineConfig:
             "offline_voltage_threshold": self.offline_voltage_threshold,
             "offline_current_threshold": self.offline_current_threshold,
             "communication_failure_window_minutes": self.communication_failure_window_minutes,
+            "stc_irradiance_wpm2": self.stc_irradiance_wpm2,
+            "temp_coefficient_pct": self.temp_coefficient_pct,
+            "rated_power_per_string_w": self.rated_power_per_string_w,
+            "rated_voltage_v": self.rated_voltage_v,
+            "rated_current_a": self.rated_current_a,
+            "night_irradiance_wpm2": self.night_irradiance_wpm2,
         }
 
     @classmethod
