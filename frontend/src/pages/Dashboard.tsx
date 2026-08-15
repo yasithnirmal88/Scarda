@@ -6,16 +6,17 @@ import { SystemStatusCard } from '../components/dashboard/SystemStatusCard';
 import { NotificationPanel } from '../components/dashboard/NotificationPanel';
 import { PowerChart } from '../components/charts/PowerChart';
 import { PlantHeatmap } from '../components/heatmap/PlantHeatmap';
+import { LiveFeed } from '../components/dashboard/LiveFeed';
 import { dashboardService, type DashboardResponse } from '../services/dashboardService';
 import { readingService } from '../services/readingService';
-import { generateMockChartData } from '../mock/fakeData';
 import type { ChartDataPoint } from '../types';
 import { useState, useEffect } from 'react';
 
 const REFRESH_INTERVAL = 30_000;
 
 export function Dashboard() {
-  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => generateMockChartData());
+  // Chart data is seeded only from real backend responses; no mock data.
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
 
   const dashQuery = useQuery<DashboardResponse>({
     queryKey: ['dashboard'],
@@ -49,6 +50,27 @@ export function Dashboard() {
     }
   }, [dashQuery.data]);
 
+  // Also backfill chart history from the readings history endpoint when
+  // available, so the chart shows real historical points instead of nothing.
+  useEffect(() => {
+    readingService.getHistory(48).then((res) => {
+      if (!res?.data?.length) return;
+      const points: ChartDataPoint[] = res.data
+        .map((r: Record<string, unknown>) => ({
+          time: r.recorded_at ? new Date(String(r.recorded_at)).toLocaleTimeString() : '',
+          power: Number(r.power ?? 0),
+          voltage: Number(r.voltage ?? 0),
+          current: Number(r.current ?? 0),
+          temperature: Number(r.temperature ?? 0),
+          irradiance: Number(r.irradiance ?? 0),
+        }))
+        .slice(-48);
+      setChartData(points);
+    }).catch(() => {
+      /* no backend data yet — chart stays empty until data arrives */
+    });
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -60,12 +82,13 @@ export function Dashboard() {
 
       {dashQuery.isError && (
         <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 text-sm text-red-700 dark:text-red-300">
-          Could not connect to backend. Using mock data.
+          Could not connect to backend. No data to display.
         </div>
       )}
 
       <PlantOverview data={dashQuery.data} isLoading={dashQuery.isLoading} />
       <PowerChart data={chartData} />
+      <LiveFeed />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <WeatherWidget />
         <RecentAlerts />

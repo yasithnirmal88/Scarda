@@ -1,8 +1,14 @@
-"""Integration test for AlertEngine + FakeProvider.
+"""Integration test for AlertEngine with a synthetic readings fixture.
 
 Simulates 100 cycles of readings with random anomalies and feeds them
 through the AlertEngine to verify detection, confirmation, and resolution
 behavior. Uses a seeded RNG for deterministic test results.
+
+NOTE: this test previously used the in-repo ``FakeProvider`` as a data source.
+That provider was removed (Scarda no longer generates data internally — all
+data comes from the mock-fusionsolar API via the provider abstraction). The
+test now uses an inline fixture of plausible string readings, preserving the
+AlertEngine coverage without reintroducing a fake data source into Scarda.
 """
 
 from __future__ import annotations
@@ -12,7 +18,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.providers.fake import FakeProvider
 from app.services.alert_engine.alert_engine import AlertEngine
 from app.services.alert_engine.types import Reading
 from app.utils.enums import AlertState
@@ -29,32 +34,20 @@ MILD_CURRENT_FACTOR = 0.6
 MILD_VOLTAGE_FACTOR = 0.75
 MILD_POWER_FACTOR = 0.6
 
-
-def _convert_fake_reading(raw: dict, string_id: str, timestamp: datetime) -> Reading:
-    return Reading(
-        string_id=string_id,
-        timestamp=timestamp,
-        current=raw.get("current_a"),
-        voltage=raw.get("voltage_v"),
-        power=raw.get("power_w"),
-        status="active",
-    )
+# Inline readings fixture (replaces the removed FakeProvider). These are
+# plausible per-string operating points under nominal conditions.
+FIXTURE_READINGS: list[dict] = [
+    {"string_id": "SEC01-INV01-STR01", "current_a": 9.4, "voltage_v": 820.0, "power_w": 7708.0},
+    {"string_id": "SEC01-INV01-STR02", "current_a": 8.7, "voltage_v": 815.0, "power_w": 7090.5},
+    {"string_id": "SEC01-INV01-STR03", "current_a": 9.1, "voltage_v": 818.0, "power_w": 7443.8},
+]
 
 
 @pytest.mark.asyncio
-async def test_engine_against_fake_provider() -> None:
-    provider = FakeProvider()
+async def test_engine_against_readings_fixture() -> None:
     engine = AlertEngine()
 
-    raw_readings = await provider.get_current_readings()
-    readings_list = raw_readings.get("readings", [])
-
-    if not readings_list:
-        readings_list = [
-            {"string_id": "SEC01-INV01-STR01", "current_a": 9.4, "voltage_v": 820.0, "power_w": 7708.0},
-            {"string_id": "SEC01-INV01-STR02", "current_a": 8.7, "voltage_v": 815.0, "power_w": 7090.5},
-            {"string_id": "SEC01-INV01-STR03", "current_a": 9.1, "voltage_v": 818.0, "power_w": 7443.8},
-        ]
+    readings_list = FIXTURE_READINGS
 
     simulated_readings: list[Reading] = []
     base_time = datetime.now() - timedelta(hours=24)
@@ -105,7 +98,7 @@ async def test_engine_against_fake_provider() -> None:
     avg_detection = sum(detection_times) / len(detection_times) if detection_times else 0.0
 
     print(f"\n{'='*60}")
-    print(f"SIMULATION RESULTS — FakeDataProvider ({len(readings_list)} strings)")
+    print(f"SIMULATION RESULTS — readings fixture ({len(readings_list)} strings)")
     print(f"{'='*60}")
     print(f"Total simulated readings : {len(simulated_readings)}")
     print(f"Healthy readings         : {total_healthy}")
@@ -144,4 +137,4 @@ async def test_engine_against_fake_provider() -> None:
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(test_engine_against_fake_provider())
+    asyncio.run(test_engine_against_readings_fixture())

@@ -67,6 +67,39 @@ Mock FusionSolar API (separate repo) → small container host. The agent cannot
 provision accounts, databases, or DNS — see the manual-steps section of
 `docs/DEPLOYMENT.md`.
 
+## Live data pipeline (added 2026-08)
+
+The 10-min live + 90-day historical pipeline is wired end-to-end:
+
+- **Mock FusionSolar** (`providers/simulator.py`) emits physics-coupled
+  weather + per-string power every `SIM_INTERVAL` (600s). `history/generator.py`
+  backfills 90 days of 10-min rows. Exposed via `/plants/{id}/history` and
+  `/plants/{id}/weather/history`.
+- **Scarda ingestion:** `HuaweiProvider.get_historical_readings` /
+  `get_historical_weather` pull the 90-day batch; `history_backfill.py`
+  stores both into the existing `string_readings` + `weather_readings`
+  hypertables, preserving original measurement timestamps.
+- **Composite-id resolution:** provider readings carry ids like
+  `SEC01-INV01-STR01`. `HistoricalBaselineProvider` now takes an injectable
+  `string_id_resolver` (default `_default_string_id_resolver`) that maps the
+  composite id to the integer `strings.id` FK via `resolve_string_id`, so live
+  readings are compared against the correct string's history instead of
+  falling back to physics.
+- **Weather-similarity alerting:** on each live reading,
+  `similarity_for_conditions` filters the same string + similar irradiance
+  (±100 W/m²) + similar temperature (±3°C) + time-of-day band (±2h) over a
+  14-day lookback, requires ≥5 samples, computes median + MAD, and flags an
+  outlier. Cloud drops (low power under low irradiance) match history → no
+  alert; degraded strings (low power under good irradiance) → anomaly.
+- **Frontend:** `useLiveData` hook connects to `/api/ws`, subscribes to
+  readings/weather/alerts topics, and a `LiveFeed` dashboard widget renders
+  the pushed values. `GET /api/weather/history` returns the stored 10-min
+  weather series. No data is fabricated in React.
+
+Integration tests: `tests/test_live_data_flow.py` (5 tests, SQLite-backed)
+proves weather backfill timestamps, backfill→similarity, degraded detection,
+cloud no-alert, and storage-handler timestamp preservation.
+
 ## Roadmap (not yet done)
 
 - Live end-to-end validation with the mock running: cycle

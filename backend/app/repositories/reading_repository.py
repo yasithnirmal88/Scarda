@@ -19,6 +19,21 @@ class ReadingRepository:
         self.db.refresh(reading)
         return reading
 
+    def bulk_create(self, readings: list[StringReading]) -> None:
+        """Persist many readings in one transaction.
+
+        Used by the historical backfill path that ingests a whole batch from the
+        provider while preserving each reading's original measurement timestamp.
+        """
+        if not readings:
+            return
+        try:
+            self.db.add_all(readings)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
     def find_by_id(self, reading_id: int) -> StringReading | None:
         return self.db.query(StringReading).filter(StringReading.id == reading_id).first()
 
@@ -112,6 +127,9 @@ class ReadingRepository:
         power, or ``None`` when fewer than ``min_samples`` rows exist (so the
         caller can fall back to the physics model). Used by the Tier-2
         historical baseline.
+
+        For the richer robust-statistics result (median + MAD + sample count +
+        time-of-day window), prefer ``similarity_for_conditions``.
         """
         start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
         rows = (
@@ -133,3 +151,111 @@ class ReadingRepository:
             return None
         mid = len(powers) // 2
         return float(powers[mid])
+
+    def similarity_for_conditions(
+        self,
+        string_id: int,
+        irradiance: float,
+        temperature: float,
+        *,
+        reference_at: datetime | None = None,
+        irradiance_band: float = 100.0,
+        temp_band: float = 3.0,
+        time_of_day_band_hours: float = 2.0,
+        lookback_days: int = 14,
+        min_samples: int = 5,
+    ) -> dict | None:
+        """Robust historical similarity lookup for one string.
+
+        Finds historical ``StringReading`` rows for the same string, within a
+        configurable lookback window, with similar irradiance (+/-
+        ``irradiance_band`` W/m²), similar temperature (+/- ``temp_band`` °C),
+        and — to avoid comparing an 08:00 reading with a 13:00 reading — within
+        ``time_of_day_band_hours`` of the reference reading's hour-of-day
+        (unless ``reference_at`` is None, in which case the time-of-day filter
+        is skipped).
+
+        Returns a dict with the robust expected-power statistics:
+
+            {
+              "sample_count": int,
+              "median_power": float,
+              "mad": float,            # median absolute deviation
+              "iqr": float,            # interquartile range (dispersion)
+              "min_power": float,
+              "max_power": float,
+              "powers": [float, ...],  # matched samples (for inspection)
+            }
+
+        or ``None`` when fewer than ``min_samples`` matches exist (so the caller
+        can fall back to the physics model). This is the Tier-2 historical
+        baseline's source of truth; MAD is used instead of standard deviation
+        because it is robust to the occasional bad/outlier sample.
+        """
+        start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+        stmt = self.db.query(StringReading).filter(
+            StringReading.string_id == string_id,
+            StringReading.recorded_at >= start,
+            StringReading.irradiance.between(
+                irradiance - irradiance_band, irradiance + irradiance_band
+            ),
+            StringReading.temperature.between(
+                temperature - temp_band, temperature + temp_band
+            ),
+        )
+
+        if reference_at is not None and time_of_day_band_hours > 0:
+            ref_hour = reference_at.astimezone(timezone.utc).hour
+            # Use EXTRACT(hour ...) so the comparison is time-of-day only; this
+            # keeps an 08:00 reading from matching a 13:00 reading even when
+            # irradiance/temperature happen to coincide.
+            hour_expr = sa_func.extract("hour", StringReading.recorded_at)
+            lo = (ref_hour - time_of_day_band_hours) % 24
+            hi = (ref_hour + time_of_day_band_hours) % 24
+            if lo <= hi:
+                stmt = stmt.filter(hour_expr.between(lo, hi))
+            else:
+                # window wraps midnight
+                stmt = stmt.filter((hour_expr >= lo) | (hour_expr <= hi))
+
+        rows = stmt.all()
+        powers = sorted(r.power for r in rows if r.power is not None)
+        if len(powers) < min_samples:
+            return None
+
+        median = _median(powers)
+        deviations = sorted(abs(p - median) for p in powers)
+        mad = _median(deviations)
+        q1 = _percentile(powers, 25)
+        q3 = _percentile(powers, 75)
+        return {
+            "sample_count": len(powers),
+            "median_power": float(median),
+            "mad": float(mad),
+            "iqr": float(q3 - q1),
+            "min_power": float(powers[0]),
+            "max_power": float(powers[-1]),
+            "powers": [float(p) for p in powers],
+        }
+
+
+def _median(sorted_values: list[float]) -> float:
+    n = len(sorted_values)
+    mid = n // 2
+    if n % 2 == 1:
+        return sorted_values[mid]
+    return (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
+
+
+def _percentile(sorted_values: list[float], pct: float) -> float:
+    """Linear-interpolation percentile on an already-sorted list."""
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    rank = (pct / 100.0) * (len(sorted_values) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(sorted_values) - 1)
+    frac = rank - lo
+    return float(sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * frac)

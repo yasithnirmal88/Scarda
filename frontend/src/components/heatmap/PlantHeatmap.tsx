@@ -1,14 +1,23 @@
-import { mockSections } from '../../mock/mockSections';
+import { useQuery } from '@tanstack/react-query';
+import { sectionService } from '../../services/sectionService';
+import type { Section } from '../../types';
 import { HealthBadge } from '../common/HealthBadge';
 
 export function PlantHeatmap() {
+  // Sections come from the backend (which reflects the live provider plant).
+  const { data: sections = [] } = useQuery<Section[]>(({
+    queryKey: ['sections'],
+    queryFn: sectionService.getAll,
+    staleTime: 60_000,
+  }) as never);
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
       <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
         Plant Overview
       </h3>
       <div className="grid grid-cols-2 gap-3">
-        {mockSections.map((section) => (
+        {sections.map((section) => (
           <div
             key={section.id}
             className="border border-gray-200 dark:border-gray-700 rounded-lg p-3"
@@ -40,6 +49,11 @@ export function PlantHeatmap() {
             </div>
           </div>
         ))}
+        {sections.length === 0 && (
+          <div className="col-span-2 text-sm text-gray-400">
+            No section data from backend yet.
+          </div>
+        )}
       </div>
     </div>
   );

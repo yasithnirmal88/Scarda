@@ -20,7 +20,7 @@ class AppSettings(BaseSettings):
 
     APP_NAME: str = "Solar AIM"
     DEBUG: bool = False
-    PROVIDER_TYPE: str = "fake"
+    PROVIDER_TYPE: str = "huawei"
 
     database: DatabaseConfig = DatabaseConfig()
     huawei: HuaweiConfig = HuaweiConfig()

@@ -57,6 +57,11 @@ def _get_weather_repo():
 class ReadingStorageHandler:
     """Stores readings from ReadingGenerated and publishes ReadingStored + WeatherUpdated.
 
+    Preserves each reading's *original measurement timestamp* (not the DB
+    insertion time) so historical analysis and baselines use the time the
+    measurement was actually taken. Falls back to "now" only when the source
+    did not supply a timestamp.
+
     Gracefully degrades when no database is available — events are still
     published so downstream handlers (alert engine, WebSocket) continue to work.
     """
@@ -67,7 +72,6 @@ class ReadingStorageHandler:
 
     async def handle(self, event: ReadingGenerated) -> None:
         readings_data = event.readings
-        now = datetime.now(timezone.utc)
 
         raw_list = (
             readings_data
@@ -75,11 +79,16 @@ class ReadingStorageHandler:
             else readings_data.get("readings", [])
         )
 
+        repo, session = _get_reading_repo()
+
         for rd in raw_list:
+            # Use the source measurement timestamp, not the ingestion time.
+            measured_at = _parse_timestamp(rd.get("timestamp")) or datetime.now(timezone.utc)
+
             await self._event_bus.publish(
                 ReadingStored(
                     string_id=str(rd.get("string_id", "0")),
-                    recorded_at=now,
+                    recorded_at=measured_at,
                     voltage=rd.get("voltage_v") or rd.get("voltage"),
                     current=rd.get("current_a") or rd.get("current"),
                     power=rd.get("power_w") or rd.get("power"),
@@ -88,32 +97,26 @@ class ReadingStorageHandler:
                 ),
             )
 
-        repo, session = _get_reading_repo()
-        if repo is not None and session is not None:
-            try:
-                from app.models.telemetry.string_reading import StringReading
+            if repo is not None and session is not None:
+                try:
+                    from app.models.telemetry.string_reading import StringReading
+                    from app.providers.huawei.string_identity import coerce_string_id
 
-                for rd in raw_list:
-                    string_id_val = rd.get("string_id", "0")
-                    try:
-                        string_id = int(string_id_val)
-                    except (ValueError, TypeError):
-                        string_id = 0
+                    string_id = coerce_string_id(session, rd.get("string_id", "0"))
                     reading = StringReading(
                         string_id=string_id,
-                        recorded_at=now,
+                        recorded_at=measured_at,
                         voltage=rd.get("voltage_v") or rd.get("voltage"),
                         current=rd.get("current_a") or rd.get("current"),
                         power=rd.get("power_w") or rd.get("power"),
                         irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance"),
-                        temperature=rd.get("temperature_c")
-                        or rd.get("temperature"),
+                        temperature=rd.get("temperature_c") or rd.get("temperature"),
                     )
                     session.add(reading)
-                session.commit()
-            except Exception:
-                session.rollback()
-                logger.warning("Could not persist readings to database")
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    logger.warning("Could not persist readings to database")
 
         weather_data: dict[str, Any] | None = None
         if isinstance(readings_data, dict):
@@ -125,12 +128,11 @@ class ReadingStorageHandler:
             w_repo, w_session = _get_weather_repo()
             if w_repo is not None and w_session is not None:
                 try:
-                    from app.models.telemetry.weather_reading import (
-                        WeatherReading,
-                    )
+                    from app.models.telemetry.weather_reading import WeatherReading
 
+                    w_measured_at = _parse_timestamp(weather_data.get("timestamp")) or datetime.now(timezone.utc)
                     record = WeatherReading(
-                        recorded_at=now,
+                        recorded_at=w_measured_at,
                         temperature=weather_data.get("temperature_c"),
                         humidity=weather_data.get("humidity_pct"),
                         irradiance=weather_data.get("irradiance_wpm2"),
@@ -147,6 +149,19 @@ class ReadingStorageHandler:
             await self._event_bus.publish(
                 WeatherUpdated(weather_data=weather_data),
             )
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse an ISO timestamp from a provider reading; tolerate None."""
+    if value is None:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
+    except (TypeError, ValueError):
+        return None
 
 
 class AlertProcessingHandler:

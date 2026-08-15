@@ -27,6 +27,9 @@ class StringRepository:
     def find_by_id(self, string_id: int) -> String | None:
         return self.db.query(String).filter(String.id == string_id).first()
 
+    def find_by_code(self, code: str) -> String | None:
+        return self.db.query(String).filter(String.code == code).first()
+
     def find_all(self) -> Sequence[String]:
         return self.db.query(String).all()
 

@@ -1,24 +1,29 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { authService } from '../services/authService';
 
 export function Login() {
   const [email, setEmail] = useState('admin@solaraim.com');
   const [password, setPassword] = useState('admin123');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login('mock-token', {
-      id: 1,
-      username: 'jdoe',
-      email,
-      role: 'admin',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    });
-    navigate('/dashboard');
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { token, user } = await authService.login(email, password);
+      login(token, user);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -43,11 +48,15 @@ export function Login() {
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-solar-500"
           />
         </div>
+        {error && (
+          <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+        )}
         <button
           type="submit"
-          className="w-full py-2.5 bg-solar-600 hover:bg-solar-700 text-white rounded-lg font-medium transition-colors"
+          disabled={submitting}
+          className="w-full py-2.5 bg-solar-600 hover:bg-solar-700 disabled:opacity-60 text-white rounded-lg font-medium transition-colors"
         >
-          Sign In
+          {submitting ? 'Signing in...' : 'Sign In'}
         </button>
       </div>
     </form>
