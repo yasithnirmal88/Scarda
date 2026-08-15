@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from app.services.alert_engine.types import AlertData
 from app.utils.enums import AlertState
 
@@ -76,9 +76,12 @@ class InMemoryAlertRepository(BaseAlertRepository):
             return None
         alert.status = AlertState.RESOLVED
         alert.resolved = True
-        alert.resolved_at = datetime.now()
-        if alert.resolved_at is not None:
-            alert.duration_seconds = (alert.resolved_at - alert.timestamp).total_seconds()
+        alert.resolved_at = datetime.now(timezone.utc)
+        if alert.resolved_at is not None and alert.timestamp is not None:
+            ts = alert.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            alert.duration_seconds = (alert.resolved_at - ts).total_seconds()
         return alert
 
     def find_active_by_string_and_type(self, string_id: str, alert_type: str) -> AlertData | None:
