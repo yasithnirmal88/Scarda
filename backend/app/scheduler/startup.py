@@ -72,7 +72,7 @@ class SchedulerStartup:
                 if k not in ("func", "id", "trigger")
             }
             self._scheduler.register_job(
-                func, trigger, kwargs=self._shared_context, id=job_id, **trigger_args,
+                func, trigger, kwargs={"context": self._shared_context}, id=job_id, **trigger_args,
             )
             logger.info("Registered job: %s", job_id)
 

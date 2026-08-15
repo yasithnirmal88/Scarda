@@ -112,11 +112,16 @@ class ReadingStorageHandler:
                         irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance"),
                         temperature=rd.get("temperature_c") or rd.get("temperature"),
                     )
-                    session.add(reading)
+                    _upsert_reading(session, reading)
                     session.commit()
                 except Exception:
                     session.rollback()
-                    logger.warning("Could not persist readings to database")
+                    logger.warning(
+                        "Could not persist reading (string_id=%s, recorded_at=%s)",
+                        rd.get("string_id"),
+                        measured_at,
+                        exc_info=True,
+                    )
 
         weather_data: dict[str, Any] | None = None
         if isinstance(readings_data, dict):
@@ -144,7 +149,10 @@ class ReadingStorageHandler:
                     w_session.commit()
                 except Exception:
                     w_session.rollback()
-                    logger.warning("Could not persist weather to database")
+                    logger.warning(
+                        "Could not persist weather to database",
+                        exc_info=True,
+                    )
 
             await self._event_bus.publish(
                 WeatherUpdated(weather_data=weather_data),
@@ -162,6 +170,44 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return ts
     except (TypeError, ValueError):
         return None
+
+
+def _upsert_reading(session: Session, reading: "StringReading") -> None:
+    """Persist a single reading idempotently.
+
+    On PostgreSQL/TimescaleDB this uses ON CONFLICT (string_id, recorded_at)
+    DO UPDATE so that a re-delivered live reading (same source timestamp) does
+    not raise a unique-violation or duplicate the row — the later value wins.
+    On SQLite (tests) it falls back to a plain merge.
+    """
+    from app.models.telemetry.string_reading import StringReading  # noqa: F811
+
+    dialect = session.bind.dialect.name if session.bind else "sqlite"
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(StringReading).values(
+            string_id=reading.string_id,
+            recorded_at=reading.recorded_at,
+            voltage=reading.voltage,
+            current=reading.current,
+            power=reading.power,
+            temperature=reading.temperature,
+            irradiance=reading.irradiance,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["string_id", "recorded_at"],
+            set_={
+                "voltage": stmt.excluded.voltage,
+                "current": stmt.excluded.current,
+                "power": stmt.excluded.power,
+                "temperature": stmt.excluded.temperature,
+                "irradiance": stmt.excluded.irradiance,
+            },
+        )
+        session.execute(stmt)
+    else:
+        session.merge(reading)
 
 
 class AlertProcessingHandler:

@@ -46,3 +46,9 @@ class ThresholdConfig(BaseSettings):
     HISTORICAL_LOOKBACK_DAYS: int = 14
     HISTORICAL_MIN_SAMPLES: int = 5
     HISTORICAL_MAD_MULTIPLIER: float = 3.0          # robust acceptance band = median +/- mult*MAD
+
+    # Startup backfill control. The 90-day backfill runs through the provider
+    # → storage layer on every boot so a fresh database self-populates. Set
+    # BACKFILL_ON_STARTUP=false to skip it when the hypertables are already
+    # populated (e.g. restarts during validation), avoiding a redundant fetch.
+    BACKFILL_ON_STARTUP: bool = True

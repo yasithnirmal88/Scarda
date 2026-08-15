@@ -187,15 +187,20 @@ async def on_startup() -> None:
     # Backfill historical readings from the provider (mock-fusionsolar in dev,
     # real Huawei in prod) into the string_readings hypertable. Each reading
     # keeps its ORIGINAL measurement timestamp. This is NOT fake data — it is
-    # pulled through the provider abstraction. Skipped when no DB is available.
-    backfill_session = _get_db()
-    await backfill_history(
-        provider,
-        event_bus,
-        days=settings.thresholds.HISTORICAL_LOOKBACK_DAYS,
-        db_session=backfill_session,
-    )
-    logger.info("Historical backfill complete")
+    # pulled through the provider abstraction. Skipped when no DB is available
+    # or when BACKFILL_ON_STARTUP=false (e.g. the hypertables are already
+    # populated and a redundant fetch should be avoided).
+    if settings.thresholds.BACKFILL_ON_STARTUP:
+        backfill_session = _get_db()
+        await backfill_history(
+            provider,
+            event_bus,
+            days=settings.thresholds.HISTORICAL_LOOKBACK_DAYS,
+            db_session=backfill_session,
+        )
+        logger.info("Historical backfill complete")
+    else:
+        logger.info("Startup backfill skipped (BACKFILL_ON_STARTUP=false)")
 
     _scheduler_startup.start()
     app.state.scheduler_startup = _scheduler_startup

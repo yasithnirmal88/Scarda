@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 
 from app.api.deps import get_provider
 from app.providers.interfaces import IDataProvider
@@ -42,7 +42,6 @@ async def get_current_weather(
 @router.get("/history")
 async def get_weather_history(
     hours: int = 24,
-    request: Request,
 ):
     """Return the stored 10-min weather time series for the last ``hours``.
 

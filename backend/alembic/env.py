@@ -1,3 +1,4 @@
+import logging
 import os
 from logging.config import fileConfig
 
@@ -19,7 +20,10 @@ from app.models import (  # noqa: F401
 )
 
 config = context.config
-if config.config_file_name is not None:
+# Only apply alembic's logging config when running the alembic CLI standalone.
+# Inside the running app, setup_logging() has already configured logging and
+# re-running fileConfig() here can deadlock on handler locks held by loguru.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 # Honor DATABASE_URL env override so `alembic upgrade head` targets the real
