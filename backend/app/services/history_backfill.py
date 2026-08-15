@@ -69,25 +69,40 @@ async def backfill_history(
             "skipping backfill",
             exc_info=True,
         )
-        return 0
-
-    if not readings:
-        logger.info("Historical backfill: provider returned no readings")
-        return 0
-
-    stored = 0
+        readings = []
 
     if db_session is not None:
         stored = _bulk_store(db_session, readings)
     elif event_bus is not None:
         # Publish through the event bus so ReadingStorageHandler persists each
         # reading with its original timestamp and the alert pipeline sees it.
-        from app.events import EventBus  # noqa: F401  (type only)
-
         await event_bus.publish("reading.generated", {"readings": readings})
         stored = len(readings)
 
     logger.info("Historical backfill: stored %d readings (%s days)", stored, days)
+
+    # Backfill plant-level weather so the weather_readings hypertable holds the
+    # full 90-day, 10-min history (used for trend/weather analysis). Each sample
+    # keeps its original measurement timestamp.
+    try:
+        weather_points = await provider.get_historical_weather(start, end)
+    except Exception:
+        logger.warning(
+            "Historical backfill: provider.get_historical_weather failed; "
+            "skipping weather backfill",
+            exc_info=True,
+        )
+        weather_points = []
+
+    if weather_points and db_session is not None:
+        w_stored = _bulk_store_weather(db_session, weather_points)
+        logger.info(
+            "Historical backfill: stored %d weather samples (%s days)", w_stored, days
+        )
+    elif weather_points and event_bus is not None:
+        for wp in weather_points:
+            await event_bus.publish("weather.updated", {"weather_data": wp})
+
     return stored
 
 
@@ -133,4 +148,45 @@ def _bulk_store(session: Any, readings: list[dict[str, Any]]) -> int:
         return len(rows)
     except Exception:
         logger.warning("Historical backfill: bulk store failed", exc_info=True)
+        return 0
+
+
+def _bulk_store_weather(session: Any, weather_points: list[dict[str, Any]]) -> int:
+    """Persist a batch of provider weather samples into ``weather_readings``.
+
+    Each sample keeps its original measurement timestamp so the weather
+    hypertable holds a true 10-min time series aligned with ``string_readings``.
+    """
+    try:
+        from app.models.telemetry.weather_reading import WeatherReading
+        from app.repositories.weather_repository import WeatherRepository
+    except Exception:
+        logger.warning("Historical backfill: weather models unavailable", exc_info=True)
+        return 0
+
+    repo = WeatherRepository(session)
+    rows: list[WeatherReading] = []
+    for wp in weather_points:
+        measured_at = _parse_ts(wp.get("timestamp")) or datetime.now(timezone.utc)
+        rows.append(
+            WeatherReading(
+                recorded_at=measured_at,
+                temperature=wp.get("temperature_c"),
+                humidity=wp.get("humidity_pct"),
+                irradiance=wp.get("irradiance_wpm2"),
+                wind_speed=wp.get("wind_speed_mps"),
+                wind_direction=wp.get("wind_direction"),
+                precipitation=wp.get("precipitation_mm"),
+            )
+        )
+    if not rows:
+        return 0
+    try:
+        for row in rows:
+            session.add(row)
+        session.commit()
+        return len(rows)
+    except Exception:
+        session.rollback()
+        logger.warning("Historical backfill: weather bulk store failed", exc_info=True)
         return 0

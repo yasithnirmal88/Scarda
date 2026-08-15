@@ -244,6 +244,8 @@ class TestExplainFallbacks:
         assert result["expected_power"] == 0.0
 
     def test_composite_id_unresolved_uses_physics(self) -> None:
+        # Default resolver returns None when the repo has no DB session, so a
+        # composite id falls back to the physics model.
         provider = _provider(
             {"sample_count": 5, "median_power": 4200.0, "mad": 150.0, "iqr": 200.0,
              "min_power": 3900.0, "max_power": 4500.0, "powers": [4200.0]}
@@ -253,7 +255,39 @@ class TestExplainFallbacks:
             power=1800.0,
             weather={"irradiance": 820.0, "ambient_temperature": 29.0},
         )
-        # Composite ids can't be resolved to a FK in the unit-test path, so
-        # the provider reports unresolved_id and falls back to physics.
         assert result["status"] == "unresolved_id"
         assert result["method"] == "physics_fallback"
+
+    def test_composite_id_resolved_via_injected_resolver(self) -> None:
+        # With an injected resolver, a composite id is mapped to an int FK and
+        # the historical similarity query runs (the path used for live readings).
+        stats = {
+            "sample_count": 37,
+            "median_power": 4200.0,
+            "mad": 150.0,
+            "iqr": 220.0,
+            "min_power": 3900.0,
+            "max_power": 4500.0,
+            "powers": [4200.0],
+        }
+        repo = _FakeSimilarityRepo(stats)
+        cfg = AlertEngineConfig()
+        from app.services.alert_engine.baseline_provider import (
+            HistoricalBaselineProvider,
+            WeatherAwareBaselineProvider,
+        )
+
+        provider = HistoricalBaselineProvider(
+            config=cfg,
+            reading_repo_factory=lambda: repo,
+            physics_provider=WeatherAwareBaselineProvider(cfg),
+            string_id_resolver=lambda sid, r: 17,  # simulate DB lookup → FK 17
+        )
+        result = provider.explain_reading(
+            "SEC01-INV01-STR01",
+            power=1800.0,
+            weather={"irradiance": 820.0, "ambient_temperature": 29.0},
+        )
+        assert result["status"] == "abnormal"
+        assert result["method"] == "historical_similarity"
+        assert repo.calls[0]["string_id"] == 17  # resolved FK used in query

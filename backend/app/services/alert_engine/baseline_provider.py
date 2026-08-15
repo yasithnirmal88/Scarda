@@ -142,6 +142,7 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
         reading_repo_factory: Callable[[], Any] | None = None,
         physics_provider: WeatherAwareBaselineProvider | None = None,
         min_samples: int | None = None,
+        string_id_resolver: Callable[[str, Any], int | None] | None = None,
     ) -> None:
         self._config = config or AlertEngineConfig()
         self._repo_factory = reading_repo_factory or (lambda: None)
@@ -149,6 +150,10 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
         self._min_samples = (
             min_samples if min_samples is not None else self._config.historical_min_samples
         )
+        # Resolver maps a composite Scarda id (SEC01-INV01-STR01) to its integer
+        # strings.id FK so historical queries group by the same logical string.
+        # Defaults to a DB-backed resolver; injectable for unit tests.
+        self._string_id_resolver = string_id_resolver or _default_string_id_resolver
 
     def get_baseline(
         self, string_id: str, weather: dict[str, Any] | None = None
@@ -167,9 +172,9 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
         if irradiance <= self._config.night_irradiance_wpm2:
             return physics_baseline
 
-        sid = _parse_string_id(string_id)
+        sid = self._resolve_sid(string_id, repo)
         if sid is None:
-            return physics_baseline  # non-integer id → can't query FK
+            return physics_baseline  # can't resolve to a DB string FK → physics
 
         try:
             stats = self._similarity(repo, sid, irradiance, temperature, weather)
@@ -200,6 +205,25 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
         self, string_ids: list[str], weather: dict[str, Any] | None = None
     ) -> dict[str, Baseline]:
         return {sid: self.get_baseline(sid, weather) for sid in string_ids}
+
+    def _resolve_sid(self, string_id: str, repo: Any) -> int | None:
+        """Resolve any string id to its integer ``strings.id`` FK.
+
+        Numeric ids pass through. Composite Scarda ids (``SEC01-INV01-STR01``)
+        are resolved via the configured resolver, which uses the repo's DB
+        session to look the string up by code (creating the hierarchy lazily).
+        Returns ``None`` when the id cannot be resolved.
+        """
+        sid = _parse_string_id(string_id)
+        if sid is not None:
+            return sid
+        try:
+            return self._string_id_resolver(string_id, repo)
+        except Exception:
+            logger.debug(
+                "Could not resolve composite string id %s", string_id, exc_info=True
+            )
+            return None
 
     def explain_reading(
         self,
@@ -232,16 +256,16 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
                 string_id, power, physics_baseline, measured_at, "night"
             )
 
-        sid = _parse_string_id(string_id)
-        if sid is None:
-            return self._explain_physics(
-                string_id, power, physics_baseline, measured_at, "unresolved_id"
-            )
-
         repo = self._repo_factory()
         if repo is None:
             return self._explain_physics(
                 string_id, power, physics_baseline, measured_at, "no_database"
+            )
+
+        sid = self._resolve_sid(string_id, repo)
+        if sid is None:
+            return self._explain_physics(
+                string_id, power, physics_baseline, measured_at, "unresolved_id"
             )
 
         try:
@@ -365,15 +389,35 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
 
 
 def _parse_string_id(string_id: str) -> int | None:
-    """Best-effort extraction of an integer string_id from a Scarda id.
+    """Return the integer string id when ``string_id`` is purely numeric.
 
-    Scarda uses composite ids like ``SEC01-INV01-STR01``; the DB ``string_id``
-    is an integer FK. When the id is purely numeric, return it; otherwise the
-    historical provider can't query by FK and falls back to the physics model.
+    Composite Scarda ids (``SEC01-INV01-STR01``) are resolved separately via
+    ``_default_string_id_resolver`` (DB-backed) so the historical query can
+    group by the same logical string as the stored readings.
     """
     try:
         return int(string_id)
     except (TypeError, ValueError):
+        return None
+
+
+def _default_string_id_resolver(string_id: str, repo: Any) -> int | None:
+    """Resolve a composite Scarda string id to its integer ``strings.id`` FK.
+
+    Uses the reading repository's DB session to look the string up by code
+    (creating the section/inverter/string hierarchy lazily, exactly as the
+    storage handler does), so live readings with composite ids are compared
+    against the correct string's history. Returns ``None`` when the repo has
+    no session or the id is not a recognised composite id.
+    """
+    session = getattr(repo, "db", None) or getattr(repo, "session", None)
+    if session is None:
+        return None
+    try:
+        from app.providers.huawei.string_identity import resolve_string_id
+
+        return resolve_string_id(session, string_id)
+    except Exception:
         return None
 
 

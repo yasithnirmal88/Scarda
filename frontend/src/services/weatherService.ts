@@ -15,6 +15,16 @@ export interface WeatherApiResponse {
   };
 }
 
+export interface WeatherHistoryPoint {
+  timestamp: string | null;
+  temperature_c: number | null;
+  humidity_pct: number | null;
+  irradiance_wpm2: number | null;
+  wind_speed_mps: number | null;
+  wind_direction: string | null;
+  precipitation_mm: number | null;
+}
+
 export const weatherService = {
   // Weather comes from the backend (which reads it from the provider). No
   // hardcoded/demo weather values remain in the frontend.
@@ -35,5 +45,15 @@ export const weatherService = {
       description: w.description ?? '',
       timestamp: w.timestamp ?? new Date().toISOString(),
     };
+  },
+
+  // Stored 10-min weather time series from the backend (TimescaleDB). Used to
+  // visualise the live 10-min changes sent by the data source.
+  getHistory: async (hours = 24): Promise<WeatherHistoryPoint[]> => {
+    const { data } = await api.get<{ status: string; data: WeatherHistoryPoint[] }>(
+      '/weather/history',
+      { params: { hours } },
+    );
+    return data?.data ?? [];
   },
 };

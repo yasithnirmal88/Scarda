@@ -6,6 +6,7 @@ import { SystemStatusCard } from '../components/dashboard/SystemStatusCard';
 import { NotificationPanel } from '../components/dashboard/NotificationPanel';
 import { PowerChart } from '../components/charts/PowerChart';
 import { PlantHeatmap } from '../components/heatmap/PlantHeatmap';
+import { LiveFeed } from '../components/dashboard/LiveFeed';
 import { dashboardService, type DashboardResponse } from '../services/dashboardService';
 import { readingService } from '../services/readingService';
 import type { ChartDataPoint } from '../types';
@@ -87,6 +88,7 @@ export function Dashboard() {
 
       <PlantOverview data={dashQuery.data} isLoading={dashQuery.isLoading} />
       <PowerChart data={chartData} />
+      <LiveFeed />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <WeatherWidget />
         <RecentAlerts />
