@@ -288,9 +288,13 @@ class ReadingRepository:
         mad = _median(deviations)
         q1 = _percentile(powers, 25)
         q3 = _percentile(powers, 75)
+        currents = sorted(r.current for r in rows if r.current is not None)
+        voltages = sorted(r.voltage for r in rows if r.voltage is not None)
         return {
             "sample_count": len(powers),
             "median_power": float(median),
+            "median_current": float(_median(currents)) if currents else None,
+            "median_voltage": float(_median(voltages)) if voltages else None,
             "mad": float(mad),
             "iqr": float(q3 - q1),
             "min_power": float(powers[0]),

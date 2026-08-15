@@ -191,15 +191,22 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
                 return physics_baseline  # not enough history yet
 
             med_power = stats["median_power"]
-            if physics_baseline.expected_power > 0:
-                ratio = med_power / physics_baseline.expected_power
+            med_current = stats.get("median_current")
+            med_voltage = stats.get("median_voltage")
+            if med_current is not None and med_current > 0:
+                exp_current = med_current
+            elif physics_baseline.expected_power > 0:
+                exp_current = physics_baseline.expected_current * (
+                    med_power / physics_baseline.expected_power
+                )
             else:
-                ratio = 0.0
+                exp_current = physics_baseline.expected_current
+            exp_voltage = med_voltage if med_voltage is not None else physics_baseline.expected_voltage
             return Baseline(
                 string_id=string_id,
                 expected_power=med_power,
-                expected_current=physics_baseline.expected_current * ratio,
-                expected_voltage=physics_baseline.expected_voltage,
+                expected_current=exp_current,
+                expected_voltage=exp_voltage,
             )
         finally:
             session = getattr(repo, "db", None) or getattr(repo, "_session", None)
