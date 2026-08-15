@@ -78,6 +78,8 @@ async def backfill_history(
         # reading with its original timestamp and the alert pipeline sees it.
         await event_bus.publish("reading.generated", {"readings": readings})
         stored = len(readings)
+    else:
+        stored = 0
 
     logger.info("Historical backfill: stored %d readings (%s days)", stored, days)
 
@@ -122,10 +124,22 @@ def _bulk_store(session: Any, readings: list[dict[str, Any]]) -> int:
         return 0
 
     repo = ReadingRepository(session)
+
+    # Resolve each *unique* composite string id once (creating the plant
+    # hierarchy by code as needed), then reuse the integer FK for every
+    # reading. Without this cache, a 90-day × 40-string backfill would issue
+    # one section/inverter/string lookup per reading (~500k queries).
+    raw_ids = {rd.get("string_id", "0") for rd in readings}
+    id_cache: dict[str, int] = {}
+    for raw in raw_ids:
+        sid = coerce_string_id(session, raw)
+        if sid != 0:
+            id_cache[str(raw)] = sid
+
     rows: list[StringReading] = []
     for rd in readings:
         measured_at = _parse_ts(rd.get("timestamp")) or datetime.now(timezone.utc)
-        string_id = coerce_string_id(session, rd.get("string_id", "0"))
+        string_id = id_cache.get(str(rd.get("string_id", "0")), 0)
         if string_id == 0:
             # Couldn't resolve to a real string FK — skip rather than store
             # against the unknown-string sentinel, which would pollute history.
@@ -182,9 +196,7 @@ def _bulk_store_weather(session: Any, weather_points: list[dict[str, Any]]) -> i
     if not rows:
         return 0
     try:
-        for row in rows:
-            session.add(row)
-        session.commit()
+        repo.bulk_create(rows)
         return len(rows)
     except Exception:
         session.rollback()

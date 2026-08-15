@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
@@ -24,9 +25,67 @@ class ReadingRepository:
 
         Used by the historical backfill path that ingests a whole batch from the
         provider while preserving each reading's original measurement timestamp.
+        On PostgreSQL/TimescaleDB this is idempotent: rows that collide on the
+        (string_id, recorded_at) unique constraint are skipped via ON CONFLICT,
+        so re-running a backfill does not duplicate history.
         """
         if not readings:
             return
+        try:
+            dialect = self.db.bind.dialect.name if self.db.bind else "sqlite"
+        except Exception:
+            dialect = "sqlite"
+
+        if dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            def _row_dict(r: StringReading) -> dict[str, Any]:
+                return {
+                    "string_id": r.string_id,
+                    "recorded_at": r.recorded_at,
+                    "voltage": r.voltage,
+                    "current": r.current,
+                    "power": r.power,
+                    "temperature": r.temperature,
+                    "irradiance": r.irradiance,
+                }
+
+            # Dedupe by (string_id, recorded_at) within the batch — Postgres
+            # rejects "ON CONFLICT DO UPDATE ... affect row a second time" when
+            # the same key appears more than once in one statement. Keep the
+            # last value per key (later reading wins).
+            seen: dict[tuple[int, datetime], dict[str, Any]] = {}
+            for r in readings:
+                seen[(r.string_id, r.recorded_at)] = _row_dict(r)
+            deduped = list(seen.values())
+
+            # Chunk so we stay under Postgres' 65535 bind-parameter limit
+            # (7 cols × ~5000 rows ≈ 35k params, well under the cap) and keep
+            # each statement's memory bounded.
+            BATCH = 5000
+            total = 0
+            try:
+                for i in range(0, len(deduped), BATCH):
+                    chunk = deduped[i : i + BATCH]
+                    stmt = pg_insert(StringReading).values(chunk)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["string_id", "recorded_at"],
+                        set_={
+                            "voltage": stmt.excluded.voltage,
+                            "current": stmt.excluded.current,
+                            "power": stmt.excluded.power,
+                            "temperature": stmt.excluded.temperature,
+                            "irradiance": stmt.excluded.irradiance,
+                        },
+                    )
+                    self.db.execute(stmt)
+                    total += len(chunk)
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+            return total
+
         try:
             self.db.add_all(readings)
             self.db.commit()

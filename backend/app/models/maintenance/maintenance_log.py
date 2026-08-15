@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database.base import Base
-from app.utils.enums import MaintenanceStatus
+from app.utils.enums import MaintenanceStatus, enum_values
 
 
 class MaintenanceLog(Base):
@@ -20,7 +20,9 @@ class MaintenanceLog(Base):
     scheduled_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[MaintenanceStatus] = mapped_column(
-        Enum(MaintenanceStatus), nullable=False, default=MaintenanceStatus.SCHEDULED
+        Enum(MaintenanceStatus, values_callable=enum_values),
+        nullable=False,
+        default=MaintenanceStatus.SCHEDULED,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())

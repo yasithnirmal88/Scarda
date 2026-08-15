@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database.base import Base
-from app.utils.enums import InverterStatus
+from app.utils.enums import InverterStatus, enum_values
 
 
 class Inverter(Base):
@@ -17,7 +17,9 @@ class Inverter(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[InverterStatus] = mapped_column(
-        Enum(InverterStatus), nullable=False, default=InverterStatus.OFFLINE
+        Enum(InverterStatus, values_callable=enum_values),
+        nullable=False,
+        default=InverterStatus.OFFLINE,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())

@@ -7,6 +7,19 @@ to ensure a single source of truth and avoid duplicate definitions.
 import enum
 
 
+def enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    """Return the enum's *values* (not names) for SQLAlchemy ``Enum`` columns.
+
+    SQLAlchemy's ``Enum`` type defaults to using the enum member **name**
+    (e.g. ``"OFFLINE"``) as the stored DB value, but our Postgres enum types
+    are created from the member **value** (e.g. ``"offline"``). Passing this as
+    ``values_callable`` keeps the two in sync so inserts against real
+    PostgreSQL/TimescaleDB use the lowercase values the DB expects. SQLite
+    (tests) is unaffected.
+    """
+    return [m.value for m in enum_cls]
+
+
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     ENGINEER = "engineer"
