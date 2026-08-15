@@ -1,0 +1,110 @@
+# ===========================================================================
+# Scarda — Production Docker Compose (Oracle Cloud Always Free)
+#
+# Runs the complete stack on a single VM:
+#   - Caddy (automatic HTTPS reverse proxy)
+#   - TimescaleDB
+#   - Scarda Backend
+#   - Scarda Frontend
+#   - Mock FusionSolar (Huawei-compatible simulator)
+#
+# Usage:
+#   1. Copy .env.production.example to .env.production and fill in values
+#   2. docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# When real Huawei credentials are available, remove the mock service and
+# set HUAWEI_BASE_URL to the real Northbound API URL.
+# ===========================================================================
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      - backend
+      - frontend
+
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-solar_aim}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Do NOT expose 5432 to the internet in production.
+    # Keep it internal to the Docker network only.
+    expose:
+      - "5432"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      APP_NAME: ${APP_NAME:-Scarda}
+      DEBUG: "false"
+      PROVIDER_TYPE: "huawei"
+      HUAWEI_BASE_URL: ${HUAWEI_BASE_URL:-http://mock:8001}
+      HUAWEI_USERNAME: ${HUAWEI_USERNAME:-huawei}
+      HUAWEI_PASSWORD: ${HUAWEI_PASSWORD:-huawei}
+      HUAWEI_PLANT_CODE: ${HUAWEI_PLANT_CODE:-sim-plant-001}
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-postgres}:${DB_PASSWORD}@db:5432/${DB_NAME:-solar_aim}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      SCHEDULER_SIMULATOR_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-10}
+      SCHEDULER_ALERT_INTERVAL_MINUTES: ${SCHEDULER_ALERT_INTERVAL_MINUTES:-1}
+      HISTORICAL_LOOKBACK_DAYS: ${HISTORICAL_LOOKBACK_DAYS:-90}
+      HISTORICAL_BACKFILL_ON_STARTUP: ${HISTORICAL_BACKFILL_ON_STARTUP:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+
+  mock:
+    build:
+      context: ../mock-fusionsolar
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SIM_SCENARIO: ${SIM_SCENARIO:-healthy}
+      SIM_INTERVAL: ${SIM_INTERVAL:-600}
+    expose:
+      - "8001"
+    # Remove this service entirely when switching to the real Huawei API.
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

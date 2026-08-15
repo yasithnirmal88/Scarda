@@ -1,0 +1,35 @@
+# ===========================================================================
+# Caddy reverse proxy — automatic HTTPS via Let's Encrypt
+#
+# Caddy automatically obtains and renews TLS certificates for your domain.
+# No manual cert management needed.
+# ===========================================================================
+
+{
+	# Production: uncomment for stricter security
+	# email you@example.com
+}
+
+# Replace {$DOMAIN} with your actual domain (set in .env.production)
+# Caddy will automatically provision HTTPS certificates.
+{$DOMAIN} {
+	encode gzip zstd
+
+	# API + WebSocket → backend
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# WebSocket upgrade (Caddy handles this automatically, but explicit is clear)
+	handle /api/ws {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else → frontend (nginx serving the SPA)
+	reverse_proxy frontend:80
+}
+
+# HTTP → HTTPS redirect (Caddy does this automatically, but explicit fallback)
+http://{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
