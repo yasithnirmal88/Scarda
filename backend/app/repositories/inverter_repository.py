@@ -27,6 +27,9 @@ class InverterRepository:
     def find_by_id(self, inverter_id: int) -> Inverter | None:
         return self.db.query(Inverter).filter(Inverter.id == inverter_id).first()
 
+    def find_by_code(self, code: str) -> Inverter | None:
+        return self.db.query(Inverter).filter(Inverter.code == code).first()
+
     def find_all(self) -> Sequence[Inverter]:
         return self.db.query(Inverter).all()
 

@@ -44,6 +44,24 @@ class AlertEngineConfig:
     rated_current_a: float = settings.thresholds.RATED_CURRENT_A
     night_irradiance_wpm2: float = settings.thresholds.NIGHT_IRRADIANCE_WPM2
 
+    # Tier-2 historical similarity tolerances (Phase 10-12). These make the
+    # historical baseline configurable: how close irradiance / temperature /
+    # time-of-day must be for a historical sample to count as "similar", how
+    # far back to look, and how many matches are required before the empirical
+    # median is trusted over the physics model.
+    historical_irradiance_band: float = settings.thresholds.HISTORICAL_IRRADIANCE_BAND
+    historical_temp_band: float = settings.thresholds.HISTORICAL_TEMP_BAND
+    historical_time_of_day_band_hours: float = (
+        settings.thresholds.HISTORICAL_TIME_OF_DAY_BAND_HOURS
+    )
+    historical_lookback_days: int = settings.thresholds.HISTORICAL_LOOKBACK_DAYS
+    historical_min_samples: int = settings.thresholds.HISTORICAL_MIN_SAMPLES
+    # A reading whose power deviation from the historical median exceeds
+    # (mad_multiplier * MAD) AND the power_threshold_pct is treated as an
+    # anomaly. MAD is robust to outliers, so a single bad historical sample
+    # cannot widen the acceptance band indefinitely.
+    historical_mad_multiplier: float = settings.thresholds.HISTORICAL_MAD_MULTIPLIER
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "current_threshold_pct": self.current_threshold_pct,
@@ -63,6 +81,12 @@ class AlertEngineConfig:
             "rated_voltage_v": self.rated_voltage_v,
             "rated_current_a": self.rated_current_a,
             "night_irradiance_wpm2": self.night_irradiance_wpm2,
+            "historical_irradiance_band": self.historical_irradiance_band,
+            "historical_temp_band": self.historical_temp_band,
+            "historical_time_of_day_band_hours": self.historical_time_of_day_band_hours,
+            "historical_lookback_days": self.historical_lookback_days,
+            "historical_min_samples": self.historical_min_samples,
+            "historical_mad_multiplier": self.historical_mad_multiplier,
         }
 
     @classmethod

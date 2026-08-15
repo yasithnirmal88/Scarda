@@ -179,3 +179,125 @@ def test_id_mapping_helpers() -> None:
     assert huawei_to_scarda_string_id("inv-01-str-001") == "SEC01-INV01-STR01"
     assert huawei_to_scarda_string_id("inv-12-str-020") == "SEC01-INV12-STR20"
     assert huawei_to_scarda_string_id("already-sec01") == "already-sec01"
+
+
+# --- Phase 19 / Test 6: timestamped historical batch from the history endpoint
+
+
+HISTORY_PAYLOAD = {
+    "plant_id": "sim-plant-001",
+    "start": "2026-08-14T00:00:00Z",
+    "end": "2026-08-14T23:50:00Z",
+    "interval_minutes": 10,
+    "count": 2,
+    "data": [
+        {
+            "timestamp": "2026-08-14T00:00:00Z",
+            "string_id": "inv-01-str-001",
+            "inverter_id": "inv-01",
+            "current_a": 0.0,
+            "voltage_v": 0.0,
+            "power_w": 0.0,
+            "irradiance_w_m2": 0.0,
+            "ambient_temp_c": 18.0,
+            "status": "ok",
+        },
+        {
+            "timestamp": "2026-08-14T12:00:00Z",
+            "string_id": "inv-01-str-001",
+            "inverter_id": "inv-01",
+            "current_a": 9.4,
+            "voltage_v": 820.0,
+            "power_w": 7708.0,
+            "irradiance_w_m2": 850.0,
+            "ambient_temp_c": 28.5,
+            "status": "ok",
+        },
+    ],
+}
+
+WEATHER_HISTORY_PAYLOAD = {
+    "plant_id": "sim-plant-001",
+    "start": "2026-08-14T00:00:00Z",
+    "end": "2026-08-14T23:50:00Z",
+    "count": 2,
+    "data": [
+        {
+            "timestamp": "2026-08-14T00:00:00Z",
+            "irradiance_w_m2": 0.0,
+            "ambient_temp_c": 18.0,
+        },
+        {
+            "timestamp": "2026-08-14T12:00:00Z",
+            "irradiance_w_m2": 850.0,
+            "ambient_temp_c": 28.5,
+        },
+    ],
+}
+
+
+def _history_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/auth/login" and request.method == "POST":
+        return httpx.Response(200, json={"access_token": TOKEN, "token_type": "bearer"})
+    if request.url.path == "/api/plants/sim-plant-001/history" and request.method == "GET":
+        return httpx.Response(200, json=HISTORY_PAYLOAD)
+    if request.url.path == "/api/plants/sim-plant-001/weather/history" and request.method == "GET":
+        return httpx.Response(200, json=WEATHER_HISTORY_PAYLOAD)
+    return httpx.Response(404, json={"detail": "Not found"})
+
+
+def make_history_provider() -> tuple[HuaweiProvider, httpx.AsyncClient]:
+    transport = httpx.MockTransport(_history_handler)
+    client = httpx.AsyncClient(base_url="http://mock:8000", transport=transport)
+    config = HuaweiConfig(
+        BASE_URL="http://mock:8000",
+        USERNAME="huawei",
+        PASSWORD="huawei",
+        PLANT_ID="sim-plant-001",
+    )
+    return HuaweiProvider(config=config, client=client), client
+
+
+@pytest.mark.asyncio
+async def test_get_historical_readings_preserves_all_timestamps() -> None:
+    """Test 6 — a daily batch must keep every original measurement timestamp."""
+    provider, client = make_history_provider()
+    try:
+        from datetime import datetime, timezone
+
+        start = datetime(2026, 8, 14, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 14, 23, 59, tzinfo=timezone.utc)
+        history = await provider.get_historical_readings(start, end)
+        assert len(history) == 2
+        # Every point carries its own source timestamp (not collapsed to one).
+        timestamps = {r["timestamp"] for r in history}
+        assert "2026-08-14T00:00:00Z" in timestamps
+        assert "2026-08-14T12:00:00Z" in timestamps
+        # Night reading is near-zero; midday reading is nominal — proves the
+        # batch was not collapsed into a single record.
+        powers = {r["timestamp"]: r["power_w"] for r in history}
+        assert powers["2026-08-14T00:00:00Z"] == 0.0
+        assert powers["2026-08-14T12:00:00Z"] == 7708.0
+        # Weather/env fields are carried through.
+        midday = next(r for r in history if r["timestamp"] == "2026-08-14T12:00:00Z")
+        assert midday["irradiance_wpm2"] == 850.0
+        assert midday["temperature_c"] == 28.5
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_historical_weather_preserves_timestamps() -> None:
+    provider, client = make_history_provider()
+    try:
+        from datetime import datetime, timezone
+
+        start = datetime(2026, 8, 14, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 14, 23, 59, tzinfo=timezone.utc)
+        weather_history = await provider.get_historical_weather(start, end)
+        assert len(weather_history) == 2
+        timestamps = {w["timestamp"] for w in weather_history}
+        assert "2026-08-14T00:00:00Z" in timestamps
+        assert "2026-08-14T12:00:00Z" in timestamps
+    finally:
+        await client.aclose()

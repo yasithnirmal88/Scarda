@@ -27,5 +27,8 @@ class SectionRepository:
     def find_by_id(self, section_id: int) -> Section | None:
         return self.db.query(Section).filter(Section.id == section_id).first()
 
+    def find_by_code(self, code: str) -> Section | None:
+        return self.db.query(Section).filter(Section.code == code).first()
+
     def find_all(self) -> Sequence[Section]:
         return self.db.query(Section).all()

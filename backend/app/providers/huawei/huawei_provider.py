@@ -45,16 +45,20 @@ class HuaweiProvider(IDataProvider):
     """Data provider for the Huawei FusionSolar Northbound API.
 
     Implements the full ``IDataProvider`` contract. In the current development
-    environment it talks to the local ``mock-fusionsolar-api`` simulator, which
-    exposes the same auth/plant/string endpoints as the real Northbound API.
+    environment it talks to the local ``mock-fusionsolar`` simulator, which
+    exposes the same auth/plant/string endpoints (plus a timestamped history
+    endpoint) as the real Northbound API.
 
     Data returned by the mock is remapped to Scarda's string convention
     (``SEC01-INV01-STR01``) so dashboards, alerts and the plant hierarchy work
     unchanged.
 
-    Note: the mock simulator has no native history endpoint, so the historical
-    methods return the current live snapshot mapped into the requested window.
-    Swap ``BASE_URL``/credentials to point at the real API later.
+    Historical readings are fetched from the mock's ``/plants/{id}/history``
+    and ``/plants/{id}/weather/history`` endpoints and returned with their
+    *original measurement timestamps*, so Scarda can store them in its own
+    time-series store preserving source time. When moving to the real
+    Northbound API, swap ``BASE_URL``/credentials and replace the history
+    polling with the real KPI-history endpoint (same contract).
     """
 
     def __init__(
@@ -106,6 +110,37 @@ class HuaweiProvider(IDataProvider):
 
         resp.raise_for_status()
         return resp.json()
+
+    async def _get_history(
+        self, start: datetime, end: datetime, *, weather: bool = False
+    ) -> list[dict[str, Any]]:
+        """Fetch timestamped historical data from the provider's history endpoint.
+
+        Returns the raw points (each carrying its original measurement
+        timestamp). Falls back to a single live snapshot if the upstream has no
+        history endpoint (HTTP 404/405), preserving backwards compatibility.
+        """
+        headers = await self._auth_headers()
+        path = (
+            f"{self._config.PLANTS_PATH}/{self._config.PLANT_ID}/weather/history"
+            if weather
+            else f"{self._config.PLANTS_PATH}/{self._config.PLANT_ID}/history"
+        )
+        params = {
+            "start": start.astimezone(timezone.utc).isoformat(),
+            "end": end.astimezone(timezone.utc).isoformat(),
+        }
+        resp = await self._client.get(path, headers=headers, params=params)
+        if resp.status_code in (401,):
+            self._token = None
+            headers = await self._auth_headers()
+            resp = await self._client.get(path, headers=headers, params=params)
+        if resp.status_code in (404, 405):
+            # Upstream has no history endpoint → degrade to live snapshot.
+            return []
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", []) if isinstance(body, dict) else body
 
     @staticmethod
     def _map_readings(plant: dict[str, Any]) -> list[dict[str, Any]]:
@@ -163,36 +198,69 @@ class HuaweiProvider(IDataProvider):
     async def get_historical_readings(
         self, start: datetime, end: datetime
     ) -> list[dict[str, Any]]:
-        """Return readings within a time range.
+        """Return timestamped readings within [start, end).
 
-        The mock FusionSolar simulator exposes no history endpoint, so a single
-        live snapshot is returned, stamped with the snapshot timestamp. This is
-        sufficient for current consumers because Scarda persists every reading
-        into its own time-series store and ``HistoricalBaselineProvider`` reads
-        from that store directly; it does not depend on the provider's history.
-
-        When moving to the real Northbound API, replace this with a loop that
-        polls the KPI-history endpoint across the requested window.
+        Fetches from the provider's history endpoint (the mock FusionSolar
+        ``/plants/{id}/history`` or, later, the real Huawei KPI-history
+        endpoint). Each point is mapped to Scarda's reading model and keeps its
+        *original measurement timestamp* so downstream storage preserves source
+        time. If the upstream has no history endpoint, degrades to a single
+        live snapshot (backwards compatible).
         """
-        plant = await self._get_plant_snapshot()
-        ts = plant.get("timestamp") or datetime.now(timezone.utc).isoformat()
-        readings = self._map_readings(plant)
-        for rd in readings:
-            rd["timestamp"] = ts
-        return readings
+        points = await self._get_history(start, end, weather=False)
+        if not points:
+            plant = await self._get_plant_snapshot()
+            ts = plant.get("timestamp") or datetime.now(timezone.utc).isoformat()
+            readings = self._map_readings(plant)
+            for rd in readings:
+                rd["timestamp"] = ts
+            return readings
+
+        out: list[dict[str, Any]] = []
+        for p in points:
+            out.append(
+                {
+                    "string_id": huawei_to_scarda_string_id(p.get("string_id", "")),
+                    "inverter_id": huawei_to_scarda_inverter_id(p.get("inverter_id", "")),
+                    "current_a": p.get("current_a"),
+                    "voltage_v": p.get("voltage_v"),
+                    "power_w": p.get("power_w"),
+                    "status": p.get("status"),
+                    "irradiance_wpm2": p.get("irradiance_w_m2"),
+                    "temperature_c": p.get("ambient_temp_c"),
+                    "timestamp": p.get("timestamp"),
+                }
+            )
+        return out
 
     async def get_historical_weather(
         self, start: datetime, end: datetime
     ) -> list[dict[str, Any]]:
-        """Return historical weather within a time range.
+        """Return timestamped historical weather within [start, end).
 
-        See ``get_historical_readings``: the mock has no history endpoint, so a
-        single live weather snapshot is returned. Replace with real KPI polling
-        for the live API; Scarda's own ``WeatherReading`` store is the source of
-        truth for historical weather used by baselines.
+        Fetches from the provider's weather-history endpoint. Each sample keeps
+        its original measurement timestamp. Degrades to a single live weather
+        snapshot if the upstream has no history endpoint.
         """
-        plant = await self._get_plant_snapshot()
-        return [self._map_weather(plant)]
+        points = await self._get_history(start, end, weather=True)
+        if not points:
+            plant = await self._get_plant_snapshot()
+            return [self._map_weather(plant)]
+
+        out: list[dict[str, Any]] = []
+        for p in points:
+            out.append(
+                {
+                    "temperature_c": p.get("ambient_temp_c"),
+                    "humidity_pct": 0.0,  # not provided by the mock FusionSolar API
+                    "irradiance_wpm2": p.get("irradiance_w_m2"),
+                    "wind_speed_mps": 0.0,  # not provided by the mock FusionSolar API
+                    "wind_direction": "N/A",  # not provided by the mock FusionSolar API
+                    "precipitation_mm": 0.0,  # not provided by the mock FusionSolar API
+                    "timestamp": p.get("timestamp"),
+                }
+            )
+        return out
 
     async def health_check(self) -> dict[str, Any]:
         try:

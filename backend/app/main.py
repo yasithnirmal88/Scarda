@@ -28,7 +28,7 @@ from app.middleware.request_logger import RequestLoggerMiddleware
 from app.scheduler.startup import SchedulerStartup
 from app.services.alert_engine.alert_engine import AlertEngine
 from app.services.alert_engine.baseline_provider import HistoricalBaselineProvider
-from app.services.demo_mode import run_demo_once
+from app.services.history_backfill import backfill_history
 
 logger = logging.getLogger(__name__)
 
@@ -184,8 +184,18 @@ async def on_startup() -> None:
         },
     )
 
-    await run_demo_once(provider, event_bus)
-    logger.info("Demo mode historical data generated")
+    # Backfill historical readings from the provider (mock-fusionsolar in dev,
+    # real Huawei in prod) into the string_readings hypertable. Each reading
+    # keeps its ORIGINAL measurement timestamp. This is NOT fake data — it is
+    # pulled through the provider abstraction. Skipped when no DB is available.
+    backfill_session = _get_db()
+    await backfill_history(
+        provider,
+        event_bus,
+        days=settings.thresholds.HISTORICAL_LOOKBACK_DAYS,
+        db_session=backfill_session,
+    )
+    logger.info("Historical backfill complete")
 
     _scheduler_startup.start()
     app.state.scheduler_startup = _scheduler_startup

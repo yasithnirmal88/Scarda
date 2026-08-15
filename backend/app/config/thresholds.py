@@ -35,3 +35,14 @@ class ThresholdConfig(BaseSettings):
     RATED_VOLTAGE_V: float = 820.0              # nominal string voltage (weather-insensitive)
     RATED_CURRENT_A: float = 10.0               # nominal string current at STC
     NIGHT_IRRADIANCE_WPM2: float = 20.0         # below this -> treat as night, no output expected
+
+    # Tier-2 historical similarity tolerances (configurable). Defaults chosen
+    # so that "similar weather" means roughly the same irradiance band and a
+    # few degrees of temperature, within a couple of hours of the same
+    # time-of-day, over a two-week lookback. All env-overridable (THRESHOLD_*)
+    HISTORICAL_IRRADIANCE_BAND: float = 100.0      # +/- W/m^2
+    HISTORICAL_TEMP_BAND: float = 3.0              # +/- deg C
+    HISTORICAL_TIME_OF_DAY_BAND_HOURS: float = 2.0  # +/- hours-of-day
+    HISTORICAL_LOOKBACK_DAYS: int = 14
+    HISTORICAL_MIN_SAMPLES: int = 5
+    HISTORICAL_MAD_MULTIPLIER: float = 3.0          # robust acceptance band = median +/- mult*MAD

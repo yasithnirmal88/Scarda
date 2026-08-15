@@ -1,24 +1,35 @@
+import api from './api';
 import type { Report } from '../types';
 
-const mockReports: Report[] = [
-  { id: 1, title: 'Daily Report — 2026-07-07', type: 'daily', generatedAt: new Date().toISOString(), status: 'ready' },
-  { id: 2, title: 'Weekly Report — Week 27', type: 'weekly', generatedAt: new Date(Date.now() - 86_400_000).toISOString(), status: 'ready' },
-  { id: 3, title: 'Monthly Report — June 2026', type: 'monthly', generatedAt: new Date(Date.now() - 604_800_000).toISOString(), status: 'ready' },
-];
+interface ReportApiItem {
+  id?: number;
+  title?: string;
+  type?: string;
+  generated_at?: string;
+  generatedAt?: string;
+  status?: string;
+}
+
+function mapReport(item: ReportApiItem, index: number): Report {
+  return {
+    id: item.id ?? index + 1,
+    title: item.title ?? `Report ${index + 1}`,
+    type: (item.type as Report['type']) ?? 'daily',
+    generatedAt: item.generated_at ?? item.generatedAt ?? new Date().toISOString(),
+    status: (item.status as Report['status']) ?? 'ready',
+  };
+}
 
 export const reportService = {
+  // Reports come from the backend /reports endpoint. No mock reports.
   getAll: async (): Promise<Report[]> => {
-    return Promise.resolve([...mockReports]);
+    const { data } = await api.get('/reports');
+    return (data?.data ?? []).map(mapReport);
   },
 
   generate: async (type: string): Promise<Report> => {
-    const report: Report = {
-      id: Date.now(),
-      title: `${type.charAt(0).toUpperCase() + type.slice(1)} Report`,
-      type: type as Report['type'],
-      generatedAt: new Date().toISOString(),
-      status: 'ready',
-    };
-    return Promise.resolve(report);
+    const { data } = await api.post('/reports/generate', { type });
+    const item = data?.data ?? {};
+    return mapReport({ ...item, type: item.type ?? type }, 0);
   },
 };
