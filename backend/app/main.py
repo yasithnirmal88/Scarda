@@ -5,6 +5,7 @@ the database, data provider, WebSocket manager, and background scheduler.
 """
 
 import logging
+import os
 from typing import Any
 
 from fastapi import FastAPI
@@ -34,10 +35,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.APP_NAME, version="0.1.0")
 
+_cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials="*" not in _cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
