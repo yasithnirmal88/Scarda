@@ -166,40 +166,48 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
         if repo is None:
             return physics_baseline  # no DB available → physics model
 
-        irradiance = _coerce_float(weather.get("irradiance")) or 0.0
-        temperature = _coerce_float(weather.get("ambient_temperature")) or 25.0
-
-        if irradiance <= self._config.night_irradiance_wpm2:
-            return physics_baseline
-
-        sid = self._resolve_sid(string_id, repo)
-        if sid is None:
-            return physics_baseline  # can't resolve to a DB string FK → physics
-
         try:
-            stats = self._similarity(repo, sid, irradiance, temperature, weather)
-        except Exception:
-            logger.debug(
-                "Historical baseline query failed for %s; using physics model",
-                string_id,
-                exc_info=True,
+            irradiance = _coerce_float(weather.get("irradiance")) or 0.0
+            temperature = _coerce_float(weather.get("ambient_temperature")) or 25.0
+
+            if irradiance <= self._config.night_irradiance_wpm2:
+                return physics_baseline
+
+            sid = self._resolve_sid(string_id, repo)
+            if sid is None:
+                return physics_baseline  # can't resolve to a DB string FK → physics
+
+            try:
+                stats = self._similarity(repo, sid, irradiance, temperature, weather)
+            except Exception:
+                logger.debug(
+                    "Historical baseline query failed for %s; using physics model",
+                    string_id,
+                    exc_info=True,
+                )
+                return physics_baseline
+
+            if stats is None:
+                return physics_baseline  # not enough history yet
+
+            med_power = stats["median_power"]
+            if physics_baseline.expected_power > 0:
+                ratio = med_power / physics_baseline.expected_power
+            else:
+                ratio = 0.0
+            return Baseline(
+                string_id=string_id,
+                expected_power=med_power,
+                expected_current=physics_baseline.expected_current * ratio,
+                expected_voltage=physics_baseline.expected_voltage,
             )
-            return physics_baseline
-
-        if stats is None:
-            return physics_baseline  # not enough history yet
-
-        med_power = stats["median_power"]
-        if physics_baseline.expected_power > 0:
-            ratio = med_power / physics_baseline.expected_power
-        else:
-            ratio = 0.0
-        return Baseline(
-            string_id=string_id,
-            expected_power=med_power,
-            expected_current=physics_baseline.expected_current * ratio,
-            expected_voltage=physics_baseline.expected_voltage,
-        )
+        finally:
+            session = getattr(repo, "db", None) or getattr(repo, "_session", None)
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
 
     def get_baselines(
         self, string_ids: list[str], weather: dict[str, Any] | None = None
@@ -262,52 +270,60 @@ class HistoricalBaselineProvider(BaseBaselineProvider):
                 string_id, power, physics_baseline, measured_at, "no_database"
             )
 
-        sid = self._resolve_sid(string_id, repo)
-        if sid is None:
-            return self._explain_physics(
-                string_id, power, physics_baseline, measured_at, "unresolved_id"
-            )
-
         try:
-            stats = self._similarity(repo, sid, irradiance, temperature, weather, measured_at)
-        except Exception:
-            logger.debug("explain_reading query failed for %s", string_id, exc_info=True)
-            stats = None
+            sid = self._resolve_sid(string_id, repo)
+            if sid is None:
+                return self._explain_physics(
+                    string_id, power, physics_baseline, measured_at, "unresolved_id"
+                )
 
-        if stats is None:
-            return self._explain_physics(
-                string_id, power, physics_baseline, measured_at, "insufficient_history"
+            try:
+                stats = self._similarity(repo, sid, irradiance, temperature, weather, measured_at)
+            except Exception:
+                logger.debug("explain_reading query failed for %s", string_id, exc_info=True)
+                stats = None
+
+            if stats is None:
+                return self._explain_physics(
+                    string_id, power, physics_baseline, measured_at, "insufficient_history"
+                )
+
+            expected = stats["median_power"]
+            mad = stats["mad"]
+            deviation = power - expected
+            deviation_pct = ((power - expected) / expected * 100.0) if expected > 0 else 0.0
+            band = self._config.historical_mad_multiplier * mad
+            # anomaly_score: how many MADs below the median (0 = at expectation).
+            score = (abs(deviation) / mad) if mad > 0 else (abs(deviation_pct) / 100.0)
+            is_anomaly = (
+                deviation < 0
+                and abs(deviation) > band
+                and abs(deviation_pct) > self._config.power_threshold_pct
             )
-
-        expected = stats["median_power"]
-        mad = stats["mad"]
-        deviation = power - expected
-        deviation_pct = ((power - expected) / expected * 100.0) if expected > 0 else 0.0
-        band = self._config.historical_mad_multiplier * mad
-        # anomaly_score: how many MADs below the median (0 = at expectation).
-        score = (abs(deviation) / mad) if mad > 0 else (abs(deviation_pct) / 100.0)
-        is_anomaly = (
-            deviation < 0
-            and abs(deviation) > band
-            and abs(deviation_pct) > self._config.power_threshold_pct
-        )
-        status = "abnormal" if is_anomaly else "normal"
-        return {
-            "string_id": string_id,
-            "current_power": power,
-            "expected_power": round(expected, 2),
-            "irradiance": irradiance,
-            "temperature": temperature,
-            "historical_sample_count": stats["sample_count"],
-            "historical_median_power": round(expected, 2),
-            "historical_mad": round(mad, 2),
-            "deviation": round(deviation, 2),
-            "deviation_pct": round(deviation_pct, 2),
-            "anomaly_score": round(score, 3),
-            "status": status,
-            "method": "historical_similarity",
-            "reference_at": (measured_at.isoformat() if measured_at else None),
-        }
+            status = "abnormal" if is_anomaly else "normal"
+            return {
+                "string_id": string_id,
+                "current_power": power,
+                "expected_power": round(expected, 2),
+                "irradiance": irradiance,
+                "temperature": temperature,
+                "historical_sample_count": stats["sample_count"],
+                "historical_median_power": round(expected, 2),
+                "historical_mad": round(mad, 2),
+                "deviation": round(deviation, 2),
+                "deviation_pct": round(deviation_pct, 2),
+                "anomaly_score": round(score, 3),
+                "status": status,
+                "method": "historical_similarity",
+                "reference_at": (measured_at.isoformat() if measured_at else None),
+            }
+        finally:
+            session = getattr(repo, "db", None) or getattr(repo, "_session", None)
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
 
     def _similarity(
         self,

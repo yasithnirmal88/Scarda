@@ -79,80 +79,83 @@ class ReadingStorageHandler:
             else readings_data.get("readings", [])
         )
 
-        repo, session = _get_reading_repo()
-
-        for rd in raw_list:
-            # Use the source measurement timestamp, not the ingestion time.
-            measured_at = _parse_timestamp(rd.get("timestamp")) or datetime.now(timezone.utc)
-
-            await self._event_bus.publish(
-                ReadingStored(
-                    string_id=str(rd.get("string_id", "0")),
-                    recorded_at=measured_at,
-                    voltage=rd.get("voltage_v") or rd.get("voltage"),
-                    current=rd.get("current_a") or rd.get("current"),
-                    power=rd.get("power_w") or rd.get("power"),
-                    irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance"),
-                    temperature=rd.get("temperature_c") or rd.get("temperature"),
-                ),
-            )
-
-            if repo is not None and session is not None:
-                try:
-                    from app.models.telemetry.string_reading import StringReading
-                    from app.providers.huawei.string_identity import coerce_string_id
-
-                    string_id = coerce_string_id(session, rd.get("string_id", "0"))
-                    reading = StringReading(
-                        string_id=string_id,
-                        recorded_at=measured_at,
-                        voltage=rd.get("voltage_v") or rd.get("voltage"),
-                        current=rd.get("current_a") or rd.get("current"),
-                        power=rd.get("power_w") or rd.get("power"),
-                        irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance"),
-                        temperature=rd.get("temperature_c") or rd.get("temperature"),
-                    )
-                    _upsert_reading(session, reading)
-                    session.commit()
-                except Exception:
-                    session.rollback()
-                    logger.warning(
-                        "Could not persist reading (string_id=%s, recorded_at=%s)",
-                        rd.get("string_id"),
-                        measured_at,
-                        exc_info=True,
-                    )
-
+        # Plant-level weather accompanies the readings batch. Per-string
+        # readings from the provider usually do NOT carry irradiance, so we
+        # enrich each ReadingStored with the plant weather so the alert
+        # engine's HistoricalBaselineProvider can run the weather-aware
+        # similarity query instead of falling back to the static baseline.
         weather_data: dict[str, Any] | None = None
         if isinstance(readings_data, dict):
             weather_data = readings_data.get("weather") or event.weather
         if weather_data is None and hasattr(event, "weather"):
             weather_data = event.weather
+        w_irradiance = (weather_data or {}).get("irradiance_wpm2") or (weather_data or {}).get("irradiance")
+        w_temperature = (weather_data or {}).get("temperature_c") or (weather_data or {}).get("temperature")
+
+        repo, session = _get_reading_repo()
+        try:
+            for rd in raw_list:
+                # Use the source measurement timestamp, not the ingestion time.
+                measured_at = _parse_timestamp(rd.get("timestamp")) or datetime.now(timezone.utc)
+
+                await self._event_bus.publish(
+                    ReadingStored(
+                        string_id=str(rd.get("string_id", "0")),
+                        recorded_at=measured_at,
+                        voltage=rd.get("voltage_v") or rd.get("voltage"),
+                        current=rd.get("current_a") or rd.get("current"),
+                        power=rd.get("power_w") or rd.get("power"),
+                        irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance") or w_irradiance,
+                        temperature=rd.get("temperature_c") or rd.get("temperature") or w_temperature,
+                    ),
+                )
+
+                if repo is not None and session is not None:
+                    try:
+                        from app.models.telemetry.string_reading import StringReading
+                        from app.providers.huawei.string_identity import coerce_string_id
+
+                        string_id = coerce_string_id(session, rd.get("string_id", "0"))
+                        reading = StringReading(
+                            string_id=string_id,
+                            recorded_at=measured_at,
+                            voltage=rd.get("voltage_v") or rd.get("voltage"),
+                            current=rd.get("current_a") or rd.get("current"),
+                            power=rd.get("power_w") or rd.get("power"),
+                            irradiance=rd.get("irradiance_wpm2") or rd.get("irradiance") or w_irradiance,
+                            temperature=rd.get("temperature_c") or rd.get("temperature") or w_temperature,
+                        )
+                        _upsert_reading(session, reading)
+                        session.commit()
+                    except Exception:
+                        session.rollback()
+                        logger.warning(
+                            "Could not persist reading (string_id=%s, recorded_at=%s)",
+                            rd.get("string_id"),
+                            measured_at,
+                            exc_info=True,
+                        )
+        finally:
+            if session is not None:
+                session.close()
 
         if weather_data is not None:
             w_repo, w_session = _get_weather_repo()
-            if w_repo is not None and w_session is not None:
-                try:
-                    from app.models.telemetry.weather_reading import WeatherReading
-
-                    w_measured_at = _parse_timestamp(weather_data.get("timestamp")) or datetime.now(timezone.utc)
-                    record = WeatherReading(
-                        recorded_at=w_measured_at,
-                        temperature=weather_data.get("temperature_c"),
-                        humidity=weather_data.get("humidity_pct"),
-                        irradiance=weather_data.get("irradiance_wpm2"),
-                        wind_speed=weather_data.get("wind_speed_mps"),
-                        wind_direction=weather_data.get("wind_direction"),
-                        precipitation=weather_data.get("precipitation_mm"),
-                    )
-                    w_session.add(record)
-                    w_session.commit()
-                except Exception:
-                    w_session.rollback()
-                    logger.warning(
-                        "Could not persist weather to database",
-                        exc_info=True,
-                    )
+            try:
+                if w_repo is not None and w_session is not None:
+                    try:
+                        w_measured_at = _parse_timestamp(weather_data.get("timestamp")) or datetime.now(timezone.utc)
+                        _upsert_weather(w_session, weather_data, w_measured_at)
+                        w_session.commit()
+                    except Exception:
+                        w_session.rollback()
+                        logger.warning(
+                            "Could not persist weather to database",
+                            exc_info=True,
+                        )
+            finally:
+                if w_session is not None:
+                    w_session.close()
 
             await self._event_bus.publish(
                 WeatherUpdated(weather_data=weather_data),
@@ -208,6 +211,48 @@ def _upsert_reading(session: Session, reading: "StringReading") -> None:
         session.execute(stmt)
     else:
         session.merge(reading)
+
+
+def _upsert_weather(session: Session, weather_data: dict[str, Any], measured_at: datetime) -> None:
+    """Persist a single weather reading idempotently (ON CONFLICT on recorded_at)."""
+    from app.models.telemetry.weather_reading import WeatherReading
+
+    dialect = session.bind.dialect.name if session.bind else "sqlite"
+    record = WeatherReading(
+        recorded_at=measured_at,
+        temperature=weather_data.get("temperature_c"),
+        humidity=weather_data.get("humidity_pct"),
+        irradiance=weather_data.get("irradiance_wpm2"),
+        wind_speed=weather_data.get("wind_speed_mps"),
+        wind_direction=weather_data.get("wind_direction"),
+        precipitation=weather_data.get("precipitation_mm"),
+    )
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(WeatherReading).values(
+            recorded_at=record.recorded_at,
+            temperature=record.temperature,
+            humidity=record.humidity,
+            irradiance=record.irradiance,
+            wind_speed=record.wind_speed,
+            wind_direction=record.wind_direction,
+            precipitation=record.precipitation,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["recorded_at"],
+            set_={
+                "temperature": stmt.excluded.temperature,
+                "humidity": stmt.excluded.humidity,
+                "irradiance": stmt.excluded.irradiance,
+                "wind_speed": stmt.excluded.wind_speed,
+                "wind_direction": stmt.excluded.wind_direction,
+                "precipitation": stmt.excluded.precipitation,
+            },
+        )
+        session.execute(stmt)
+    else:
+        session.merge(record)
 
 
 class AlertProcessingHandler:
