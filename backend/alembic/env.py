@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -20,6 +21,12 @@ from app.models import (  # noqa: F401
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Honor DATABASE_URL env override so `alembic upgrade head` targets the real
+# TimescaleDB server instead of the placeholder in alembic.ini.
+_env_url = os.environ.get("DATABASE_URL")
+if _env_url:
+    config.set_main_option("sqlalchemy.url", _env_url)
 
 target_metadata = Base.metadata
 

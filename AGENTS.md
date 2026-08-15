@@ -102,10 +102,48 @@ cloud no-alert, and storage-handler timestamp preservation.
 
 ## Roadmap (not yet done)
 
-- Live end-to-end validation with the mock running: cycle
-  `SIM_SCENARIO` (healthy → degraded → offline → cloudy → healthy) and confirm
-  one alert on the right string, debounced, auto-resolves, and **zero** alerts
-  on a cloud/weather transition.
 - Swap mock for real Huawei Northbound API (set `HUAWEI_BASE_URL` + creds;
   implement real KPI-history polling in `get_historical_readings`/
   `get_historical_weather`).
+
+## E2E validation against real TimescaleDB (done 2026-08)
+
+The full pipeline runs against a real TimescaleDB (Docker
+`timescale/timescaledb:2.17.2-pg16`) + the mock FusionSolar API:
+
+- 90-day backfill: 518320 readings fetched via `HuaweiProvider`, deduped to
+  259160 unique `(string_id, recorded_at)` rows stored in the
+  `string_readings` hypertable + 12958 weather rows. Original measurement
+  timestamps preserved (range 2026-05-17 → 2026-08-15). Idempotent: a second
+  backfill adds 0 rows (ON CONFLICT upsert).
+- Historical similarity against real history: 1091 matching samples, median
+  51.19 W, MAD 12.38 for a daytime string — query latency ~30–75 ms.
+- Alert engine E2E (`scripts/e2e_alert_engine.py`): cloud/low-irradiance
+  reading → **normal** (no false alert); degraded string at 40% power under
+  good irradiance → **abnormal** (anomaly detected, score 18.7).
+
+Validation scripts: `backend/scripts/e2e_validate.py` (backfill+idempotency+
+similarity) and `backend/scripts/e2e_alert_engine.py` (alert scenarios).
+
+### PostgreSQL gotchas fixed (only surface against real Postgres; SQLite tests
+masked them)
+
+- **Enum value casing:** `SQLAlchemy`'s `Enum()` stores the member *name*
+  (`"OFFLINE"`) by default, but the Postgres enum types are created with the
+  member *value* (`"offline"`). Added `enum_values` in `app/utils/enums.py`
+  and passed `values_callable=enum_values` on every `Enum(...)` column
+  (`inverter`, `string`, `alert`, `user`, `maintenance_log`). Without this,
+  any insert against Postgres raised `DataError` on enum value mismatch.
+- **Upsert duplicates + param limit:** `ReadingRepository.bulk_create` /
+  `WeatherRepository.bulk_create` now (1) dedupe by the conflict key within a
+  batch (Postgres rejects `ON CONFLICT DO UPDATE ... affect row a second time`
+  when the same key repeats in one statement) and (2) chunk into batches of
+  5000 rows to stay under Postgres' 65535 bind-parameter limit.
+- **Backfill N+1:** `history_backfill._bulk_store` resolves each *unique*
+  composite string id once into a cache (~40 lookups) instead of one
+  `coerce_string_id` DB lookup per reading (~500k lookups). `alembic/env.py`
+  honors `DATABASE_URL` so migrations run against the compose DB. Migration
+  `004_weather_hypertable_and_dedup` makes `weather_readings` a hypertable and
+  adds the unique `(string_id, recorded_at)` / `recorded_at` dedup constraints
+  the upserts rely on (decompresses chunks first, re-enables compression after).
+
