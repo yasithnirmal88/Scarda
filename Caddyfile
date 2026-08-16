@@ -10,18 +10,23 @@
 	# email you@example.com
 }
 
-# Replace {$DOMAIN} with your actual domain (set in .env.production)
-# Caddy will automatically provision HTTPS certificates.
+# ===========================================================================
+# Caddy configuration
+#
+# LOCAL TESTING (no domain):
+#   Comment out the {$DOMAIN} block below and uncomment the :80 block.
+#
+# PRODUCTION (with domain):
+#   Keep the {$DOMAIN} block. Caddy obtains Let's Encrypt certs automatically.
+#   Set DOMAIN in .env.production to your real domain.
+# ===========================================================================
+
+# --- PRODUCTION: automatic HTTPS via Let's Encrypt ---
 {$DOMAIN} {
 	encode gzip zstd
 
 	# API + WebSocket → backend
 	handle /api/* {
-		reverse_proxy backend:8000
-	}
-
-	# WebSocket upgrade (Caddy handles this automatically, but explicit is clear)
-	handle /api/ws {
 		reverse_proxy backend:8000
 	}
 
@@ -33,3 +38,12 @@
 http://{$DOMAIN} {
 	redir https://{$DOMAIN}{uri} permanent
 }
+
+# --- LOCAL TESTING: uncomment to test without a domain ---
+# :80 {
+# 	encode gzip zstd
+# 	handle /api/* {
+# 		reverse_proxy backend:8000
+# 	}
+# 	reverse_proxy frontend:80
+# }

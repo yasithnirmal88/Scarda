@@ -56,7 +56,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: ../infrastructure/docker/backend.Dockerfile
     restart: unless-stopped
     expose:
       - "8000"
@@ -77,7 +77,8 @@ services:
       SCHEDULER_SIMULATOR_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-10}
       SCHEDULER_ALERT_INTERVAL_MINUTES: ${SCHEDULER_ALERT_INTERVAL_MINUTES:-1}
       HISTORICAL_LOOKBACK_DAYS: ${HISTORICAL_LOOKBACK_DAYS:-90}
-      HISTORICAL_BACKFILL_ON_STARTUP: ${HISTORICAL_BACKFILL_ON_STARTUP:-true}
+      THRESHOLD_HISTORICAL_LOOKBACK_DAYS: ${HISTORICAL_LOOKBACK_DAYS:-90}
+      THRESHOLD_BACKFILL_ON_STARTUP: ${HISTORICAL_BACKFILL_ON_STARTUP:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -85,7 +86,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: ../infrastructure/docker/frontend.Dockerfile
     restart: unless-stopped
     expose:
       - "80"
